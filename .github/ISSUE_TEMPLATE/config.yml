@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Preguntas de uso
+    url: https://github.com/Ahiram/Scrappy/discussions
+    about: Para dudas de configuracion o de uso, mejor abre una discusion.
+  - name: Vulnerabilidades de seguridad
+    url: https://github.com/Ahiram/Scrappy/security/advisories/new
+    about: No abras una issue publica. Reportalas por aqui (ver SECURITY.md).

@@ -1,0 +1,63 @@
+# Changelog
+
+Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
+Versionado según [SemVer](https://semver.org/lang/es/).
+
+## [No publicado]
+
+## [0.1.0] — 2026-08-11
+
+Primera versión.
+
+### Añadido
+
+**Pipeline**
+- Seis etapas: descubrir → filtrar → rankear → descargar → deduplicar → publicar.
+- Las cuatro últimas se ejecutan por item, no por lote, de modo que nunca hay más de un medio en la máquina.
+- Modo `--dry-run` que recorre descubrimiento, filtros y ranking sin descargar ni publicar, con tabla de desglose de cada score.
+
+**Almacenamiento efímero**
+- `EphemeralWorkspace` con borrado garantizado en `finally`, ante excepción y ante cancelación.
+- Imágenes y GIFs enteramente en memoria, sin fichero temporal.
+- Handler de `SIGTERM`/`SIGINT` que purga los workspaces vivos antes de terminar.
+- Barrido de huérfanos al arrancar.
+- Workspace en tmpfs en Docker: el medio no llega al disco físico.
+- Tres backends de estado (`sqlite`, `memory`, `none`) para elegir cuánto se recuerda.
+
+**Fuentes**
+- Reddit sobre la API oficial con OAuth *application-only*.
+- X con doble backend: `api` (oficial, requiere tier de pago) y `scrape` (yt-dlp, contra ToS).
+- TikTok e Instagram sobre yt-dlp.
+- Las tres fuentes que incumplen ToS, desactivadas tras `ENABLE_TOS_RISKY_SOURCES`.
+
+**Ranking**
+- Normalización por percentil dentro de cada fuente y lote, para que las escalas de las plataformas no se mezclen.
+- Término de velocidad que detecta lo que se está haciendo viral ahora.
+- Penalizaciones configurables por duración, falta de miniatura y engagement sin conversación.
+- Todos los pesos y umbrales en `config/sources.yaml`.
+
+**Deduplicación**
+- Tres puertas: `uid` antes de descargar, `sha256` exacto, y pHash perceptual.
+- Para video, pHash de tres frames muestreados al 25/50/75 % de la duración, extraídos por stdout sin tocar el disco.
+
+**Entrega**
+- Método de la Bot API correcto según el tipo de medio.
+- Atribución obligatoria y no desactivable: autor y enlace al original en cada publicación.
+- Transcodificación automática a 720p cuando el clip supera el límite de 50 MB.
+- Control de ritmo entre publicaciones.
+
+**Interfaces**
+- CLI: `fetch`, `run`, `health`, `sources`, `whoami`, `purge`, `version`.
+- Comandos del bot: `/fetch`, `/sources`, `/stats`, `/pause`, `/resume`, `/config`, `/health`, `/purge`.
+- Scheduler con `max_instances=1` para que dos runs no se solapen.
+
+**Infraestructura**
+- Imagen Docker multi-etapa con ffmpeg, usuario sin privilegios y tmpfs para el workspace.
+- CI en Linux y Windows, Python 3.11–3.13, con un paso que falla si queda algún fichero de medio tras los tests.
+- 140 tests, sin red. Cobertura por encima del 80 % en `ranking/`, `storage/` y `delivery/`.
+
+**Documentación**
+- Nueve documentos en `docs/` y ocho ADRs.
+
+[No publicado]: https://github.com/Ahiram/Scrappy/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Ahiram/Scrappy/releases/tag/v0.1.0

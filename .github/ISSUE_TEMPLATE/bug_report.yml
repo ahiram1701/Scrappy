@@ -1,0 +1,68 @@
+name: Informe de fallo
+description: Algo no funciona como deberia
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por informar. Antes de nada: **no pegues tokens ni cookies**.
+        La salida de `/config` ya viene con los secretos redactados.
+
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: Que ocurre
+      description: Que esperabas y que paso en su lugar.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproducir
+    attributes:
+      label: Como reproducirlo
+      placeholder: |
+        1. Ejecuto `scrappy fetch --source reddit`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: health
+    attributes:
+      label: Salida de `scrappy health`
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs relevantes
+      description: Con `SCRAPPY_LOG_LEVEL=DEBUG` sale mucha mas informacion.
+      render: text
+
+  - type: dropdown
+    id: fuente
+    attributes:
+      label: Fuente implicada
+      options: [reddit, x, tiktok, instagram, ninguna en concreto]
+    validations:
+      required: true
+
+  - type: input
+    id: entorno
+    attributes:
+      label: Entorno
+      placeholder: "Docker / Windows 11 + Python 3.12 / Debian 12"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: comprobaciones
+    attributes:
+      label: Comprobaciones
+      options:
+        - label: He mirado docs/TROUBLESHOOTING.md
+          required: true
+        - label: No he incluido ningun token, secreto ni cookie
+          required: true

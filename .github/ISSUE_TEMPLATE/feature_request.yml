@@ -1,0 +1,43 @@
+name: Propuesta de mejora
+description: Sugiere una funcionalidad o un cambio
+labels: [mejora]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Que problema resuelve
+      description: Describe la necesidad, no la solucion. Es mas facil ayudarte asi.
+    validations:
+      required: true
+
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Que propones
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Una fuente nueva
+        - Ranking y seleccion
+        - Publicacion en Telegram
+        - Comandos del bot
+        - Despliegue y operacion
+        - Documentacion
+        - Otra
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: legal
+    attributes:
+      label: Si propones una fuente nueva
+      options:
+        - label: >
+            He comprobado si la plataforma ofrece una API publica para este uso,
+            y si no la ofrece, entiendo que la fuente ira desactivada por defecto
+            detras del flag de ToS (ver docs/LEGAL.md).

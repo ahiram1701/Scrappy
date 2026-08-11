@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# Secretos y configuracion local  -- NUNCA se versionan
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+config/sources.yaml
+secrets/
+*.cookies.txt
+cookies*.txt
+
+# ---------------------------------------------------------------------------
+# Estado en runtime
+# ---------------------------------------------------------------------------
+data/
+var/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ---------------------------------------------------------------------------
+# Medios: el bot es efimero por diseno, pero por si acaso nunca se cuela nada
+# ---------------------------------------------------------------------------
+*.mp4
+*.mkv
+*.webm
+*.mov
+*.m4a
+*.gif
+*.jpg
+*.jpeg
+*.png
+*.webp
+!docs/assets/*.png
+!docs/assets/*.svg
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Herramientas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# ---------------------------------------------------------------------------
+# Editores y sistema operativo
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store

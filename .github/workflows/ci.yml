@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo sobre la misma rama cancela el run anterior: no tiene sentido
+# gastar minutos en validar un commit ya superado.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  lint:
+    name: Estilo y tipos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar dependencias
+        run: pip install -e ".[dev]"
+
+      - name: Ruff (errores)
+        run: ruff check --output-format=github .
+
+      - name: Ruff (formato)
+        run: ruff format --check .
+
+      - name: Mypy
+        run: mypy src
+
+  test:
+    name: Tests (py${{ matrix.python-version }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Se prueba en Windows ademas de Linux a proposito: el borrado
+        # garantizado de los workspaces se comporta distinto ahi (ficheros
+        # bloqueados, solo lectura), y es justo lo que no puede fallar.
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+        exclude:
+          - os: windows-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.13"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Instalar ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Instalar ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Instalar dependencias
+        run: pip install -e ".[dev]"
+
+      - name: Tests con cobertura
+        run: pytest --cov=src/scrappy --cov-report=xml --cov-report=term
+
+      - name: Verificar que no quedan medios en el arbol
+        # Red de seguridad de la garantia central: si un test dejase un fichero
+        # de medio en el repositorio, este paso lo detecta.
+        shell: bash
+        run: |
+          restos=$(find . -type f \( -name '*.mp4' -o -name '*.webm' -o -name '*.gif' \) -not -path './.git/*' | head -20)
+          if [ -n "$restos" ]; then
+            echo "Han quedado ficheros de medio tras los tests:"
+            echo "$restos"
+            exit 1
+          fi
+          echo "El arbol esta limpio."
+
+      - name: Subir cobertura
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  docker:
+    name: Imagen Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Construir imagen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: scrappy:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Comprobar que ffmpeg y la CLI estan dentro
+        run: |
+          docker run --rm --entrypoint ffmpeg scrappy:ci -version | head -1
+          docker run --rm scrappy:ci version

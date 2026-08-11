@@ -1,0 +1,154 @@
+# =============================================================================
+# Scrappy -- catalogo de fuentes y parametros de ranking
+#
+# Copia este fichero a `config/sources.yaml` y ajustalo a tu gusto.
+# Todo lo que decide QUE se busca y COMO se puntua vive aqui, no en el codigo.
+#
+# Referencia: docs/CONFIGURATION.md  y  docs/RANKING.md
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# ranking: como se elige "lo mejor".
+#
+# El problema es que 12.000 upvotes de Reddit no son comparables con 12.000
+# likes de TikTok. Por eso el engagement bruto NUNCA se compara entre fuentes:
+# primero se convierte al percentil del item dentro de su propio lote.
+#
+#   score = w_engagement * engagement_norm
+#         + w_velocity   * velocity_norm
+#         + w_source     * source_weight
+#         - penalizaciones
+#
+# Los tres pesos deberian sumar 1.0 para que el score quede en [0, 1].
+# -----------------------------------------------------------------------------
+ranking:
+  weights:
+    engagement: 0.50   # cuanto pesa ser popular dentro de su lote
+    velocity: 0.35     # cuanto pesa ser popular RAPIDO (detecta lo que esta explotando)
+    source: 0.15       # sesgo manual hacia las fuentes que mas te gustan
+
+  penalties:
+    # Se resta del score cuando el item incumple cada condicion.
+    too_long: 0.20         # supera max_duration_seconds
+    too_short: 0.10        # baja de min_duration_seconds
+    no_thumbnail: 0.05     # sin miniatura: mala señal de calidad
+    low_comment_ratio: 0.10  # muchos likes y casi ningun comentario (posible bot)
+
+  # Ratio comentarios/engagement por debajo del cual se aplica low_comment_ratio.
+  min_comment_ratio: 0.002
+
+  # Score minimo para que un item se llegue a descargar. Sube esto si te
+  # llega demasiada morralla; bajalo si el bot publica poco.
+  min_score: 0.35
+
+
+# -----------------------------------------------------------------------------
+# sources: un bloque por plataforma.
+#
+# `weight` es el source_weight de la formula, en [0, 1].
+# `budget` es cuantos candidatos pide el adapter en cada ejecucion ANTES de
+# filtrar y rankear. Pedir de mas cuesta poco (solo son metadatos) y mejora
+# mucho la calidad de la seleccion final.
+# -----------------------------------------------------------------------------
+sources:
+
+  # ---------------------------------------------------------------------------
+  # Reddit -- API oficial, la fuente mas estable. Recomendada como nucleo.
+  # ---------------------------------------------------------------------------
+  reddit:
+    weight: 0.9
+    budget: 60
+    # `top` con listing=day suele dar mejor señal que `hot`.
+    listing: top          # top | hot | rising
+    time_filter: day      # hour | day | week  (solo aplica a `top`)
+    subreddits:
+      - memes
+      - dankmemes
+      - PerfectTiming
+      - Unexpected
+      - nextfuckinglevel
+      - AnimalsBeingDerps
+      - contagiouslaughter
+      - funnyvideos
+    # Ignora posts que no lleguen a este numero de upvotes, sea cual sea su percentil.
+    min_score: 500
+
+  # ---------------------------------------------------------------------------
+  # X / Twitter
+  #
+  # backend `api`   -> requiere tier Basic de pago (~200 USD/mes) para buscar.
+  # backend `scrape`-> yt-dlp + cookies, gratis pero contra ToS y fragil.
+  # Se elige con SCRAPPY_X_BACKEND en el .env.
+  # ---------------------------------------------------------------------------
+  x:
+    weight: 0.7
+    budget: 40
+    # Consultas para el backend `api` (sintaxis de X API v2).
+    queries:
+      - "(funny OR meme) has:videos -is:retweet lang:es min_faves:2000"
+      - "(funny OR meme) has:videos -is:retweet lang:en min_faves:5000"
+    # Cuentas a vigilar con el backend `scrape` (sin la @).
+    accounts:
+      - Memes
+      - dailyviralvid
+
+  # ---------------------------------------------------------------------------
+  # TikTok -- requiere ENABLE_TOS_RISKY_SOURCES=true. Ver docs/LEGAL.md.
+  # ---------------------------------------------------------------------------
+  tiktok:
+    weight: 0.6
+    budget: 30
+    hashtags:
+      - humor
+      - memes
+      - fyp
+    accounts: []
+    min_play_count: 100000
+
+  # ---------------------------------------------------------------------------
+  # Instagram -- requiere ENABLE_TOS_RISKY_SOURCES=true y cookies de sesion.
+  # ---------------------------------------------------------------------------
+  instagram:
+    weight: 0.6
+    budget: 25
+    hashtags:
+      - memes
+      - reels
+    accounts: []
+
+
+# -----------------------------------------------------------------------------
+# filters: se aplican ANTES de descargar nada, sobre los metadatos.
+# -----------------------------------------------------------------------------
+filters:
+  # Titulos o descripciones que contengan cualquiera de estas palabras
+  # (sin distinguir mayusculas) se descartan. Utiles para temas que no
+  # quieres en tu canal.
+  blocked_keywords:
+    - gore
+    - nsfw
+    - onlyfans
+    - crypto
+    - "link in bio"
+
+  # Autores vetados (sin @).
+  blocked_authors: []
+
+  # Idiomas permitidos cuando la fuente informa del idioma.
+  # Lista vacia = no filtrar por idioma.
+  allowed_languages: []
+
+
+# -----------------------------------------------------------------------------
+# delivery: como se presenta el contenido en Telegram.
+# -----------------------------------------------------------------------------
+delivery:
+  # La atribucion (autor + enlace original) es OBLIGATORIA y no se puede
+  # desactivar: es lo minimo exigible al republicar trabajo ajeno.
+  # Ver docs/LEGAL.md.
+  show_score: false        # anade el score al caption, util para calibrar
+  show_source_badge: true  # anade un emoji identificando la plataforma
+  silent_notifications: false
+  # Segundos de espera entre publicaciones consecutivas. Telegram limita a
+  # ~20 mensajes/minuto por chat; 4s deja margen de sobra.
+  delay_between_posts: 4

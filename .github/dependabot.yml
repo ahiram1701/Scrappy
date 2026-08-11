@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  # yt-dlp es la dependencia que mas se mueve: las plataformas cambian por
+  # dentro cada pocas semanas y las correcciones llegan por ahi. Merece una
+  # revision semanal aparte del resto.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencias]
+    groups:
+      dev:
+        dependency-type: development
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: [dependencias, docker]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels: [dependencias, ci]

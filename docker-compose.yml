@@ -1,0 +1,71 @@
+# =============================================================================
+# Scrappy -- despliegue con Docker Compose
+#
+#   docker compose up -d          arranca en segundo plano
+#   docker compose logs -f        sigue los logs
+#   docker compose exec scrappy scrappy health
+#   docker compose down           para y limpia
+#
+# Antes del primer arranque:
+#   cp .env.example .env
+#   cp config/sources.example.yaml config/sources.yaml
+# =============================================================================
+
+services:
+  scrappy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: scrappy:latest
+    container_name: scrappy
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    volumes:
+      # Unico volumen persistente, y solo guarda metadatos de deduplicacion
+      # (~200 bytes por item). Ningun medio se escribe aqui jamas.
+      - scrappy-data:/data
+
+      # El catalogo de fuentes, en solo lectura: el contenedor no lo modifica.
+      - ./config/sources.yaml:/app/config/sources.yaml:ro
+
+      # Cookies para las fuentes que las necesiten. Descomenta si las usas.
+      # - ./secrets:/secrets:ro
+
+    tmpfs:
+      # AQUI ESTA LA CLAVE de la garantia de "nada en disco": el workspace
+      # efimero vive en RAM. Aunque un fallo impidiese borrarlo, el contenido
+      # desaparece al parar el contenedor y nunca toco el disco fisico.
+      #
+      # 512 MB dan de sobra: solo hay un medio a la vez y el limite de subida
+      # de Telegram son 50 MB.
+      - /tmp/scrappy:size=512m,mode=1777
+
+    # El proceso descarga y transcodifica: sin techo, un video patologico
+    # podria comerse la maquina entera.
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    healthcheck:
+      test: ["CMD", "scrappy", "health"]
+      interval: 5m
+      timeout: 30s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  scrappy-data:
+    driver: local
