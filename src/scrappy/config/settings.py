@@ -82,9 +82,11 @@ class Settings(BaseSettings):
     items_per_run: PositiveInt = 5
 
     # -- Reddit -------------------------------------------------------------
+    # Sin credenciales: el registro de apps de Reddit se cerro en noviembre de
+    # 2025 y los endpoints .json en mayo de 2026. Este adapter usa los feeds
+    # Atom publicos, que no piden autenticacion pero si un User-Agent que te
+    # identifique. Ver docs/adr/0009-reddit-por-rss.md
     reddit_enabled: bool = True
-    reddit_client_id: SecretStr = SecretStr("")
-    reddit_client_secret: SecretStr = SecretStr("")
     reddit_user_agent: str = "python:scrappy:0.1.0 (by /u/unknown)"
 
     # -- Fuentes con riesgo de ToS ------------------------------------------

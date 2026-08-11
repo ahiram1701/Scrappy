@@ -1,83 +1,87 @@
-"""Adapter de Reddit sobre la API oficial.
+"""Adapter de Reddit sobre los feeds Atom publicos.
 
-Es la fuente recomendada y la unica que no plantea problemas de terminos de
-servicio: Reddit publica una API documentada, con OAuth, y aqui se usa tal cual.
+## Por que RSS y no la API
 
-Se autentica con el flujo *application-only* (`client_credentials`), que da
-acceso de solo lectura a lo publico sin necesitar la contrasena de ninguna
-cuenta. Basta con crear una app de tipo `script` en
-https://www.reddit.com/prefs/apps y copiar el id y el secreto al `.env`.
+Hasta 2025 lo correcto era usar la API oficial con OAuth. Ya no se puede:
 
-No se usa PRAW a proposito: solo hacen falta dos endpoints y asi todos los
-adapters comparten el mismo cliente httpx con reintentos (ver
-`docs/adr/0002-httpx-en-vez-de-praw.md`).
+- El registro autoservicio de apps en `/prefs/apps` **se cerro en noviembre de
+  2025**. Ahora hay un formulario de aprobacion manual bajo la *Responsible
+  Builder Policy*, y los proyectos personales se rechazan de forma sistematica.
+- Los endpoints `.json` sin autenticar **se bloquearon el 28 de mayo de 2026**:
+  devuelven 403.
+
+Lo que sigue abierto son los feeds Atom, que Reddit nunca metio en la superficie
+de pago. Este adapter los usa como estan pensados para usarse: un cliente que se
+identifica honestamente, respeta los 429 y espacia sus peticiones.
+
+Conviene saber que Reddit ha dado a entender que RSS podria ser lo siguiente que
+cierre. Si un dia deja de funcionar, no sera un fallo de Scrappy.
+
+## Lo que el feed da y lo que no
+
+Da autor, id, permalink, titulo, fecha, miniatura y —dentro del `<content>`—
+el enlace directo al medio.
+
+**No da upvotes ni comentarios.** Pero el feed viene *ordenado por score del
+dia*, asi que la posicion es la senal: el primero es el mejor del dia. Eso encaja
+incluso mejor que los upvotes brutos en el modelo de percentiles del scorer,
+porque la posicion ya *es* un percentil. Ver `docs/adr/0009-reddit-por-rss.md`.
 """
 
 from __future__ import annotations
 
-import base64
+import asyncio
+import re
 import time
-from typing import Any
+from datetime import UTC, datetime
+from xml.etree import ElementTree
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from scrappy.core.errors import RateLimitedError, SourceError
 from scrappy.core.models import MediaKind, RawCandidate, utcnow
 from scrappy.sources.base import SourceAdapter, SourceStatus
 
-_TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
-_API_BASE = "https://oauth.reddit.com"
+_FEED_URL = "https://www.reddit.com/r/{subreddit}/.rss"
 
-# Se renueva el token con margen para no perder una peticion por caducidad.
-_TOKEN_MARGIN_SECONDS = 60
+_ATOM = "{http://www.w3.org/2005/Atom}"
+_MEDIA = "{http://search.yahoo.com/mrss/}"
+
+# El `<content>` del feed es una tabla HTML con dos enlaces: uno al medio,
+# rotulado [link], y otro a los comentarios. Solo interesa el primero.
+_MEDIA_LINK = re.compile(r'href="([^"]+)"[^>]*>\s*\[link\]', re.I)
 
 _IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
-_ANIMATION_SUFFIXES = (".gif",)
 
-# Dominios que yt-dlp resuelve bien y que suelen traer video de calidad.
-_VIDEO_DOMAINS = frozenset(
-    {
-        "v.redd.it",
-        "redgifs.com",
-        "www.redgifs.com",
-        "streamable.com",
-        "gfycat.com",
-        "imgur.com",
-        "i.imgur.com",
-        "youtube.com",
-        "youtu.be",
-    }
+# Dominios de video que yt-dlp resuelve bien.
+_VIDEO_DOMAINS = (
+    "v.redd.it",
+    "redgifs.com",
+    "streamable.com",
+    "gfycat.com",
+    "youtube.com",
+    "youtu.be",
 )
+
+# Sin OAuth el limite ronda las 10 peticiones por minuto, y en la practica
+# saltan 429 incluso espaciando 7 segundos. De ahi los 12 por defecto y, sobre
+# todo, la rotacion de subreddits: es mejor consultar pocos por ronda que
+# comerse un 429 a mitad de lista.
+_DEFAULT_DELAY_SECONDS = 12.0
+_DEFAULT_SUBS_PER_RUN = 3
 
 
 class RedditSource(SourceAdapter):
-    """Descubre posts en los subreddits configurados en `sources.yaml`."""
+    """Descubre posts leyendo los feeds Atom de los subreddits configurados."""
 
     name = "reddit"
+    # RSS es una funcionalidad publica que Reddit sirve deliberadamente y este
+    # adapter la consume como un lector de feeds educado. No es equiparable al
+    # scraping de TikTok o Instagram, asi que no va detras del flag de ToS.
     requires_tos_ack = False
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self._token: str | None = None
-        self._token_expires_at: float = 0.0
-
-    # ------------------------------------------------------------------
-    # Estado
-    # ------------------------------------------------------------------
     async def status(self) -> SourceStatus:
-        has_creds = bool(
-            self.settings.reddit_client_id.get_secret_value()
-            and self.settings.reddit_client_secret.get_secret_value()
-        )
         subreddits = self.config.get_list("subreddits")
-        if not has_creds:
-            return SourceStatus(
-                name=self.name,
-                enabled=self.settings.reddit_enabled,
-                configured=False,
-                detail="faltan SCRAPPY_REDDIT_CLIENT_ID / SCRAPPY_REDDIT_CLIENT_SECRET",
-            )
         if not subreddits:
             return SourceStatus(
                 name=self.name,
@@ -85,57 +89,24 @@ class RedditSource(SourceAdapter):
                 configured=False,
                 detail="no hay subreddits en config/sources.yaml",
             )
+        if "/u/" not in self.settings.reddit_user_agent:
+            return SourceStatus(
+                name=self.name,
+                enabled=self.settings.reddit_enabled,
+                configured=False,
+                detail=(
+                    "SCRAPPY_REDDIT_USER_AGENT debe identificarte, con el formato "
+                    "'windows:scrappy:0.1.0 (by /u/tu_usuario)'; con uno generico "
+                    "Reddit responde 429"
+                ),
+            )
+        per_run = self.config.get_int("subreddits_per_run", _DEFAULT_SUBS_PER_RUN)
         return SourceStatus(
             name=self.name,
             enabled=self.settings.reddit_enabled,
             configured=True,
-            detail=f"{len(subreddits)} subreddits",
+            detail=f"{len(subreddits)} subreddits, {per_run} por ronda (feeds RSS)",
         )
-
-    # ------------------------------------------------------------------
-    # Autenticacion
-    # ------------------------------------------------------------------
-    async def _access_token(self) -> str:
-        """Token de aplicacion, cacheado hasta poco antes de su caducidad."""
-        if self._token and time.monotonic() < self._token_expires_at:
-            return self._token
-
-        client_id = self.settings.reddit_client_id.get_secret_value()
-        client_secret = self.settings.reddit_client_secret.get_secret_value()
-        basic = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
-
-        try:
-            response = await self.client.post(
-                _TOKEN_URL,
-                data={"grant_type": "client_credentials"},
-                headers={
-                    "Authorization": f"Basic {basic}",
-                    "User-Agent": self.settings.reddit_user_agent,
-                },
-            )
-        except httpx.HTTPError as exc:
-            raise SourceError(self.name, f"no se pudo contactar con Reddit: {exc}") from exc
-
-        if response.status_code == 401:
-            raise SourceError(
-                self.name,
-                "credenciales rechazadas. Revisa que la app sea de tipo 'script' y "
-                "que el id y el secreto sean los correctos.",
-            )
-        if response.status_code != 200:
-            raise SourceError(
-                self.name, f"el endpoint de token devolvio HTTP {response.status_code}"
-            )
-
-        payload = response.json()
-        token = payload.get("access_token")
-        if not token:
-            raise SourceError(self.name, "la respuesta de token no incluye access_token")
-
-        self._token = str(token)
-        expires_in = float(payload.get("expires_in", 3600))
-        self._token_expires_at = time.monotonic() + max(expires_in - _TOKEN_MARGIN_SECONDS, 30)
-        return self._token
 
     # ------------------------------------------------------------------
     # Descubrimiento
@@ -145,63 +116,73 @@ class RedditSource(SourceAdapter):
         if not subreddits:
             return []
 
-        listing = self.config.get_str("listing", "top")
+        selection = self._rotate(subreddits)
+        sort = self.config.get_str("listing", "top")
         time_filter = self.config.get_str("time_filter", "day")
-        min_score = self.config.get_int("min_score", 0)
-
-        # Se autentica ANTES del bucle a proposito. Si las credenciales son
-        # invalidas, el error debe tumbar la fuente entera de inmediato en vez
-        # de reintentarse una vez por subreddit: seria una ristra de peticiones
-        # condenadas al fallo, y un camino rapido al rate limit.
-        await self._access_token()
-
-        # El presupuesto se reparte entre subreddits, con un minimo razonable
-        # para que anadir muchos subreddits no deje a cada uno con 2 posts.
-        per_sub = max(budget // max(len(subreddits), 1), 10)
+        delay = float(self.config.get_int("delay_seconds", int(_DEFAULT_DELAY_SECONDS)))
 
         candidates: list[RawCandidate] = []
-        for subreddit in subreddits:
+        for index, subreddit in enumerate(selection):
+            if index:
+                # Espaciado entre subreddits. Sin esto, el segundo o el tercero
+                # se come un 429 casi seguro.
+                await asyncio.sleep(delay)
             try:
-                posts = await self._fetch_listing(subreddit, listing, time_filter, per_sub)
+                entries = await self._fetch_feed(subreddit, sort, time_filter)
             except RateLimitedError:
-                raise
+                # Si nos limitan, insistir con el resto solo empeora las cosas.
+                self.log.warning("rate_limited_stop", subreddit=subreddit)
+                break
             except SourceError as exc:
-                # Un subreddit privado o inexistente no debe tumbar la fuente.
                 self.log.warning("subreddit_failed", subreddit=subreddit, error=str(exc))
                 continue
 
-            for post in posts:
-                candidate = self._to_candidate(post, subreddit)
-                if candidate is None:
-                    continue
-                if candidate.engagement < min_score:
-                    continue
-                candidates.append(candidate)
+            candidates.extend(self._to_candidates(entries, subreddit))
 
-        self.log.info("discovered", count=len(candidates), subreddits=len(subreddits))
-        return candidates
+        self.log.info(
+            "discovered",
+            count=len(candidates),
+            subreddits=len(selection),
+            de=len(subreddits),
+        )
+        return candidates[:budget] if budget else candidates
 
-    @retry(
-        retry=retry_if_exception_type(httpx.TransportError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=8),
-        reraise=True,
-    )
-    async def _fetch_listing(
-        self, subreddit: str, listing: str, time_filter: str, limit: int
-    ) -> list[dict[str, Any]]:
-        token = await self._access_token()
-        params: dict[str, Any] = {"limit": min(limit, 100), "raw_json": 1}
-        if listing == "top":
+    def _rotate(self, subreddits: list[str]) -> list[str]:
+        """Elige que subreddits tocan esta ronda.
+
+        El rate limit no permite consultarlos todos cada vez, asi que se recorre
+        la lista por tramos. El desplazamiento sale de la hora actual, de modo
+        que rota solo entre ejecuciones sin necesidad de guardar estado: con 9
+        subreddits y 3 por ronda, se cubre la lista entera cada tres rondas.
+        """
+        per_run = max(self.config.get_int("subreddits_per_run", _DEFAULT_SUBS_PER_RUN), 1)
+        if per_run >= len(subreddits):
+            return subreddits
+
+        blocks = max(len(subreddits) // per_run, 1)
+        offset = (int(time.time() // 3600) % blocks) * per_run
+        rotated = subreddits[offset:] + subreddits[:offset]
+        return rotated[:per_run]
+
+    async def _fetch_feed(
+        self, subreddit: str, sort: str, time_filter: str
+    ) -> list[ElementTree.Element]:
+        """Descarga y parsea un feed Atom.
+
+        Se usa `?sort=...` sobre la URL base y no la variante `/top/.rss`, que
+        devuelve 403.
+        """
+        params: dict[str, str] = {"sort": sort}
+        if sort == "top":
             params["t"] = time_filter
 
         try:
             response = await self.client.get(
-                f"{_API_BASE}/r/{subreddit}/{listing}",
+                _FEED_URL.format(subreddit=subreddit),
                 params=params,
                 headers={
-                    "Authorization": f"Bearer {token}",
                     "User-Agent": self.settings.reddit_user_agent,
+                    "Accept": "application/atom+xml, application/xml",
                 },
             )
         except httpx.HTTPError as exc:
@@ -211,108 +192,193 @@ class RedditSource(SourceAdapter):
             retry_after = response.headers.get("retry-after")
             raise RateLimitedError(self.name, float(retry_after) if retry_after else None)
         if response.status_code == 403:
-            raise SourceError(self.name, f"r/{subreddit} es privado o esta restringido")
+            raise SourceError(
+                self.name,
+                f"r/{subreddit}: 403. El subreddit es privado, o Reddit ha cerrado "
+                "tambien los feeds RSS (ver docs/adr/0009-reddit-por-rss.md).",
+            )
         if response.status_code == 404:
             raise SourceError(self.name, f"r/{subreddit} no existe")
         if response.status_code != 200:
             raise SourceError(self.name, f"r/{subreddit}: HTTP {response.status_code}")
 
-        payload = response.json()
-        children = payload.get("data", {}).get("children", [])
-        return [child.get("data", {}) for child in children if isinstance(child, dict)]
+        try:
+            root = ElementTree.fromstring(response.text)
+        except ElementTree.ParseError as exc:
+            raise SourceError(
+                self.name, f"r/{subreddit}: la respuesta no es un feed valido ({exc})"
+            ) from exc
+
+        # No basta con que parsee. Cuando Reddit bloquea devuelve su pagina de
+        # error con un 200 enganoso, y ese HTML puede parsear como XML sin
+        # quejarse: el resultado seria cero candidatos en silencio, que es el
+        # peor fallo posible porque parece que simplemente no habia nada.
+        if root.tag != f"{_ATOM}feed":
+            raise SourceError(
+                self.name,
+                f"r/{subreddit}: la respuesta no es un feed valido (raiz <{root.tag}>). "
+                "Suele significar que Reddit esta bloqueando la peticion; "
+                "ver docs/adr/0009-reddit-por-rss.md",
+            )
+
+        return list(root.findall(f"{_ATOM}entry"))
 
     # ------------------------------------------------------------------
     # Normalizacion
     # ------------------------------------------------------------------
-    def _to_candidate(self, post: dict[str, Any], subreddit: str) -> RawCandidate | None:
-        """Convierte un post de Reddit en `RawCandidate`, o None si no sirve.
+    def _to_candidates(
+        self, entries: list[ElementTree.Element], subreddit: str
+    ) -> list[RawCandidate]:
+        total = len(entries)
+        candidates: list[RawCandidate] = []
 
-        Se descartan los posts de solo texto, las encuestas y los enlaces a
-        dominios de los que no sabemos extraer medio.
+        for position, entry in enumerate(entries):
+            candidate = self._to_candidate(entry, subreddit, position, total)
+            if candidate is not None:
+                candidates.append(candidate)
+
+        return self._demote_pinned(candidates, subreddit)
+
+    def _demote_pinned(self, candidates: list[RawCandidate], subreddit: str) -> list[RawCandidate]:
+        """Quita el engagement heredado de la posicion a los posts fijados.
+
+        Los moderadores fijan anuncios arriba del subreddit y el feed los sirve
+        en las primeras posiciones sin ninguna marca que los distinga. Como aqui
+        la posicion ES el engagement, un anuncio fijado se llevaria la nota mas
+        alta del lote.
+
+        Se detectan por la edad: en un feed de `top` del dia todo ronda las
+        mismas horas, asi que una entrada varias veces mas vieja que la mediana
+        no esta ahi por su score, sino por estar clavada. Se le asigna el
+        engagement minimo en vez de descartarla, porque de vez en cuando un post
+        fijado es contenido legitimo.
         """
-        if post.get("stickied") or post.get("is_self") or post.get("pinned"):
+        if len(candidates) < 5:
+            return candidates
+
+        now = utcnow()
+        ages = sorted(candidate.age_hours(now=now) for candidate in candidates)
+        median_age = ages[len(ages) // 2]
+        if median_age <= 0:
+            return candidates
+
+        threshold = median_age * 3
+        adjusted: list[RawCandidate] = []
+        for candidate in candidates:
+            if candidate.age_hours(now=now) > threshold:
+                self.log.debug(
+                    "pinned_demoted",
+                    subreddit=subreddit,
+                    uid=candidate.uid,
+                    age_hours=round(candidate.age_hours(now=now)),
+                )
+                adjusted.append(candidate.model_copy(update={"engagement": 1}))
+            else:
+                adjusted.append(candidate)
+        return adjusted
+
+    def _to_candidate(
+        self,
+        entry: ElementTree.Element,
+        subreddit: str,
+        position: int,
+        total: int,
+    ) -> RawCandidate | None:
+        raw_id = _text(entry, f"{_ATOM}id")
+        if not raw_id:
             return None
-        if post.get("removed_by_category"):
+        # Los ids vienen con el prefijo de tipo: `t3_1r4jnof`.
+        source_id = raw_id.split("_", 1)[-1]
+
+        link_element = entry.find(f"{_ATOM}link")
+        permalink = link_element.get("href", "") if link_element is not None else ""
+        if not permalink:
             return None
 
-        post_id = post.get("id")
-        if not post_id:
-            return None
-
-        url = str(post.get("url_overridden_by_dest") or post.get("url") or "")
-        kind, media_url = self._classify(post, url)
+        content = _text(entry, f"{_ATOM}content") or ""
+        kind, media_url = self._classify(content)
         if kind is None:
             return None
 
-        permalink = f"https://www.reddit.com{post.get('permalink', '')}"
-        author = str(post.get("author") or "desconocido")
+        author_element = entry.find(f"{_ATOM}author")
+        author = "desconocido"
+        author_url: str | None = None
+        if author_element is not None:
+            # `removeprefix` y no `lstrip("/u/")`: lstrip quita *cualquiera* de
+            # esos caracteres, asi que un autor llamado "umberto" acabaria
+            # convertido en "mberto".
+            raw_author = _text(author_element, f"{_ATOM}name") or "desconocido"
+            author = raw_author.removeprefix("/u/")
+            author_url = _text(author_element, f"{_ATOM}uri")
 
-        duration: float | None = None
-        reddit_video = (post.get("media") or {}).get("reddit_video") or {}
-        if reddit_video.get("duration"):
-            duration = float(reddit_video["duration"])
-
-        thumbnail = post.get("thumbnail")
-        if thumbnail in {"self", "default", "nsfw", "spoiler", "image", ""}:
-            thumbnail = None
+        thumbnail_element = entry.find(f"{_MEDIA}thumbnail")
+        thumbnail = thumbnail_element.get("url") if thumbnail_element is not None else None
 
         return RawCandidate(
             source=self.name,
-            source_id=str(post_id),
+            source_id=source_id,
             permalink=permalink,
-            title=str(post.get("title") or ""),
+            title=_text(entry, f"{_ATOM}title") or "",
             author=author,
-            author_url=f"https://www.reddit.com/user/{author}",
+            author_url=author_url,
             kind=kind,
             media_url=media_url,
             thumbnail_url=thumbnail,
-            duration_seconds=duration,
-            created_at=self._created_at(post),
-            engagement=int(post.get("score") or 0),
-            comments=int(post.get("num_comments") or 0),
-            nsfw=bool(post.get("over_18")),
+            duration_seconds=None,  # el feed no lo informa
+            created_at=_parse_datetime(_text(entry, f"{_ATOM}published")),
+            # El feed no trae upvotes, pero viene ordenado por score del dia:
+            # la posicion ES la senal. Se invierte para que el primero puntue
+            # mas alto, y el scorer la convierte a percentil igual que haria
+            # con los upvotes reales.
+            engagement=max(total - position, 1),
+            comments=0,
+            nsfw=False,  # los feeds publicos no incluyen contenido marcado NSFW
             language=None,
-            extra={"subreddit": subreddit, "upvote_ratio": post.get("upvote_ratio")},
+            extra={"subreddit": subreddit, "feed_position": position},
         )
 
     @staticmethod
-    def _created_at(post: dict[str, Any]) -> Any:
-        from datetime import UTC, datetime
+    def _classify(content_html: str) -> tuple[MediaKind | None, str | None]:
+        """Deduce el tipo de medio a partir del enlace `[link]` del contenido.
 
-        epoch = post.get("created_utc")
-        if epoch is None:
-            return utcnow()
-        return datetime.fromtimestamp(float(epoch), tz=UTC)
-
-    @staticmethod
-    def _classify(post: dict[str, Any], url: str) -> tuple[MediaKind | None, str | None]:
-        """Decide el tipo de medio y si hay URL directa o hace falta yt-dlp.
-
-        Devuelve `(None, None)` cuando el post no contiene medio aprovechable.
+        Devuelve `(None, None)` para los posts sin medio aprovechable: texto,
+        enlaces a articulos y galerias.
         """
-        lowered = url.lower().split("?")[0]
+        match = _MEDIA_LINK.search(content_html)
+        if not match:
+            return None, None
 
-        # Video alojado en Reddit: el audio va en una pista DASH separada, asi
-        # que se delega en yt-dlp en vez de usar la URL directa (que seria muda).
-        if post.get("is_video") or "v.redd.it" in lowered:
+        url = match.group(1).replace("&amp;", "&")
+        clean = url.lower().split("?")[0]
+
+        if any(domain in clean for domain in _VIDEO_DOMAINS):
+            # Con v.redd.it el audio va en una pista DASH aparte, asi que la URL
+            # directa seria muda: se delega en yt-dlp.
             return MediaKind.VIDEO, None
-
-        if lowered.endswith(_ANIMATION_SUFFIXES):
+        if clean.endswith(".gif"):
             return MediaKind.ANIMATION, url
-        if lowered.endswith(".gifv") or lowered.endswith(".mp4"):
+        if clean.endswith((".gifv", ".mp4")):
             return MediaKind.ANIMATION, None
-        if lowered.endswith(_IMAGE_SUFFIXES):
+        if clean.endswith(_IMAGE_SUFFIXES):
             return MediaKind.PHOTO, url
-
-        hint = post.get("post_hint")
-        if hint == "image":
-            return MediaKind.PHOTO, url
-        if hint in {"hosted:video", "rich:video"}:
-            return MediaKind.VIDEO, None
-
-        domain = str(post.get("domain") or "").lower()
-        if domain in _VIDEO_DOMAINS:
-            return MediaKind.VIDEO, None
-
-        # Galerias, enlaces a articulos, crossposts sin medio: no interesan.
         return None, None
+
+
+# ---------------------------------------------------------------------------
+# Utilidades de parseo
+# ---------------------------------------------------------------------------
+def _text(element: ElementTree.Element, path: str) -> str | None:
+    found = element.find(path)
+    if found is None or found.text is None:
+        return None
+    return found.text.strip()
+
+
+def _parse_datetime(value: str | None) -> datetime:
+    """Fecha ISO-8601 del feed, tolerando el sufijo `Z`."""
+    if not value:
+        return utcnow()
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError:
+        return utcnow()

@@ -53,14 +53,25 @@ ranking:
 sources:
 
   # ---------------------------------------------------------------------------
-  # Reddit -- API oficial, la fuente mas estable. Recomendada como nucleo.
+  # Reddit -- feeds Atom publicos, sin credenciales.
+  #
+  # El feed no informa de upvotes, pero viene ORDENADO POR SCORE del periodo,
+  # asi que la posicion es la senal: el primero es el mejor del dia. El scorer
+  # la convierte a percentil igual que haria con los upvotes reales.
+  #
+  # OJO CON EL RATE LIMIT: sin autenticar, Reddit responde 429 con facilidad.
+  # Por eso no se consultan todos los subreddits en cada ronda, sino que se
+  # rotan: con 9 subreddits y 3 por ronda, se recorre la lista entera cada tres
+  # ejecuciones. Poner muchos subreddits es bueno; consultarlos todos de golpe,
+  # no.
   # ---------------------------------------------------------------------------
   reddit:
     weight: 0.9
     budget: 60
-    # `top` con listing=day suele dar mejor señal que `hot`.
-    listing: top          # top | hot | rising
+    listing: top          # top | hot | new | rising
     time_filter: day      # hour | day | week  (solo aplica a `top`)
+    subreddits_per_run: 3 # cuantos consultar en cada ronda
+    delay_seconds: 12     # espera entre subreddits; bajarlo provoca 429
     subreddits:
       - memes
       - dankmemes
@@ -70,8 +81,7 @@ sources:
       - AnimalsBeingDerps
       - contagiouslaughter
       - funnyvideos
-    # Ignora posts que no lleguen a este numero de upvotes, sea cual sea su percentil.
-    min_score: 500
+      - MadeMeSmile
 
   # ---------------------------------------------------------------------------
   # X / Twitter

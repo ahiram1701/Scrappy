@@ -5,6 +5,22 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Cambiado
+
+- **Reddit pasa a usar los feeds Atom públicos en vez de la API OAuth.** Reddit cerró el registro autoservicio de aplicaciones en noviembre de 2025 y bloqueó los endpoints `.json` en mayo de 2026; los feeds siguen abiertos y no piden credenciales. Ver [ADR-0009](docs/adr/0009-reddit-por-rss.md).
+  - El engagement se deriva de la posición en el feed, que viene ordenado por score.
+  - Los subreddits rotan entre ejecuciones para no agotar el rate limit.
+  - Se validan las respuestas: una página de bloqueo con 200 ya no pasa por feed vacío.
+  - Los posts fijados se degradan al engagement mínimo en vez de llevarse la mejor nota.
+
+### Eliminado
+
+- `SCRAPPY_REDDIT_CLIENT_ID` y `SCRAPPY_REDDIT_CLIENT_SECRET`: ya no se usan. Si los tenías en el `.env`, puedes borrarlos.
+
+### Corregido
+
+- El prefijo `/u/` del autor se quitaba con `lstrip`, que elimina cualquiera de esos caracteres: un autor llamado `umberto` quedaba como `mberto`.
+
 ## [0.1.0] — 2026-08-11
 
 Primera versión.

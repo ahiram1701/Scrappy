@@ -82,8 +82,10 @@ Solo hacen falta cuatro valores para empezar a publicar desde Reddit:
 |---|---|
 | `SCRAPPY_TELEGRAM_BOT_TOKEN` | Habla con [@BotFather](https://t.me/BotFather) y usa `/newbot` |
 | `SCRAPPY_TELEGRAM_TARGET_CHAT_ID` | Añade el bot al canal como administrador y ejecuta `scrappy whoami` |
-| `SCRAPPY_REDDIT_CLIENT_ID` / `_SECRET` | Crea una app de tipo *script* en [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) |
 | `SCRAPPY_TELEGRAM_ADMIN_IDS` | Tu id numérico de Telegram, para poder usar los comandos |
+| `SCRAPPY_REDDIT_USER_AGENT` | Solo tu usuario de Reddit: `windows:scrappy:0.1.0 (by /u/tu_usuario)` |
+
+**Reddit no necesita credenciales.** Scrappy usa sus feeds Atom públicos, no la API — el registro de aplicaciones se cerró en noviembre de 2025 y los endpoints `.json` devuelven 403 desde mayo de 2026. Lo único obligatorio es identificarte en el User-Agent: con uno genérico, Reddit responde 429. El porqué completo está en [ADR-0009](docs/adr/0009-reddit-por-rss.md).
 
 La referencia completa de las ~30 variables está en **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 

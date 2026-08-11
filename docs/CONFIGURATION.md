@@ -46,12 +46,19 @@ Con los valores por defecto: 5 memes cada 3 horas, unos 40 al día.
 
 ### Reddit
 
+**No necesita credenciales.** Scrappy usa los feeds Atom públicos porque el registro de aplicaciones se cerró en noviembre de 2025 y los endpoints `.json` devuelven 403 desde mayo de 2026 ([ADR-0009](adr/0009-reddit-por-rss.md)).
+
 | Variable | Defecto | Descripción |
 |---|---|---|
 | `REDDIT_ENABLED` | `true` | |
-| `REDDIT_CLIENT_ID` | — | De una app tipo *script* en [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps). |
-| `REDDIT_CLIENT_SECRET` | — | Ídem. |
-| `REDDIT_USER_AGENT` | genérico | **Cámbialo.** Reddit devuelve 429 con User-Agents genéricos. Formato: `plataforma:scrappy:0.1.0 (by /u/tu_usuario)`. |
+| `REDDIT_USER_AGENT` | genérico | **Cámbialo, es obligatorio.** Con uno genérico Reddit responde 429. Formato: `plataforma:scrappy:0.1.0 (by /u/tu_usuario)`. `scrappy sources` avisa si no te identifica. |
+
+Y en `sources.yaml`, dos claves propias de esta fuente por el rate limit:
+
+| Clave | Defecto | Descripción |
+|---|---|---|
+| `subreddits_per_run` | `3` | Cuántos subreddits consultar por ronda. Se rotan, así que la lista entera se cubre en varias ejecuciones. |
+| `delay_seconds` | `12` | Espera entre subreddits. Bajarlo provoca 429. |
 
 ### Fuentes con riesgo de ToS
 

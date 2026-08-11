@@ -18,14 +18,18 @@
 
 ## Fuente por fuente
 
-### Reddit — vía limpia ✅
+### Reddit — vía razonable ✅
 
-Reddit publica una [API documentada](https://www.reddit.com/dev/api/) con OAuth. Scrappy la usa tal cual, con el flujo *application-only*, respetando los límites de tasa y con un User-Agent identificable.
+Scrappy usa los **feeds Atom públicos** (`/r/{sub}/.rss`), no la API. Reddit cerró el registro de aplicaciones en noviembre de 2025 y bloqueó los endpoints `.json` en mayo de 2026, pero nunca metió los feeds en la superficie de pago ([ADR-0009](adr/0009-reddit-por-rss.md)).
 
-Requisitos que Scrappy cumple:
-- User-Agent descriptivo y único (Reddit devuelve 429 si no).
-- Respeto del rate limit, con parada ante un 429.
-- Sin evadir restricciones de subreddits privados.
+Es la fuente más limpia del proyecto, aunque conviene ser preciso sobre por qué: RSS es un formato pensado para que clientes automáticos lean contenido, y Reddit lo sirve deliberadamente y sin autenticación. Scrappy se comporta como el lector de feeds que ese formato espera:
+
+- User-Agent descriptivo que identifica al usuario, sin fingir ser un navegador.
+- Peticiones espaciadas y rotación de subreddits para no forzar el límite.
+- Parada inmediata ante un 429.
+- Sin tocar subreddits privados ni evadir restricción alguna.
+
+Dicho esto, Reddit ha dado a entender que RSS podría ser la siguiente superficie que cierre. Si lo hace, la respuesta correcta es dejar de usarlo, no buscar la forma de saltárselo.
 
 Ten en cuenta que el contenido de Reddit lo suben usuarios, y **muchas veces no son sus autores originales**. Un meme en r/memes puede ser el trabajo de alguien que no tiene ni idea de que está ahí.
 

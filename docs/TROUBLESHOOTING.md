@@ -78,17 +78,27 @@ Tu id no está en `SCRAPPY_TELEGRAM_ADMIN_IDS`. Consíguelo con [@userinfobot](h
 
 ## Fuentes
 
-### Reddit: `credenciales rechazadas`
+### Reddit: `error 500` al crear una app en `/prefs/apps`
 
-La app tiene que ser de tipo **script** en [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps). El `client_id` es la cadena corta **debajo** del nombre de la app, no el nombre.
+No es culpa tuya: **Reddit cerró el registro autoservicio de aplicaciones en noviembre de 2025**. La página devuelve un 500 en vez de decirlo.
+
+No hace falta arreglarlo. Scrappy **no usa la API**, usa los feeds Atom públicos y no necesita credenciales ([ADR-0009](adr/0009-reddit-por-rss.md)). Borra `SCRAPPY_REDDIT_CLIENT_ID` y `_SECRET` de tu `.env` si los tenías: ya no existen.
 
 ### Reddit: 429 constantes
 
-Tu `SCRAPPY_REDDIT_USER_AGENT` es genérico. Reddit lo penaliza. Usa algo único:
+Dos causas, por orden:
 
-```
-linux:scrappy:0.1.0 (by /u/tu_usuario_real)
-```
+1. **Tu `SCRAPPY_REDDIT_USER_AGENT` es genérico.** Sin autenticar, Reddit es especialmente estricto. Usa uno que te identifique:
+   ```
+   windows:scrappy:0.1.0 (by /u/tu_usuario_real)
+   ```
+2. **Estás consultando demasiados subreddits seguidos.** El límite sin autenticar ronda las 10 peticiones por minuto. Sube `delay_seconds` a 15–20 y baja `subreddits_per_run` a 2 en `config/sources.yaml`. No pierdes cobertura: los subreddits rotan entre ejecuciones.
+
+### Reddit: `la respuesta no es un feed valido`
+
+Reddit está bloqueando la petición y devolviendo su página de error con un 200 engañoso. Revisa el User-Agent y espacia más las peticiones.
+
+Si persiste con una configuración correcta, puede que Reddit haya cerrado también los feeds RSS — estaba anunciado como posible. En ese caso no hay arreglo por nuestra parte.
 
 ### X: `HTTP 403`
 
