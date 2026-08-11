@@ -89,6 +89,12 @@ class Settings(BaseSettings):
     reddit_enabled: bool = True
     reddit_user_agent: str = "python:scrappy:0.1.0 (by /u/unknown)"
 
+    # -- Lemmy --------------------------------------------------------------
+    # La alternativa federada a Reddit. Su API es publica y sin autenticacion
+    # porque la lectura anonima es un requisito de la federacion, asi que no
+    # hay ninguna credencial que configurar.
+    lemmy_enabled: bool = True
+
     # -- Fuentes con riesgo de ToS ------------------------------------------
     enable_tos_risky_sources: bool = False
 
@@ -191,6 +197,7 @@ class Settings(BaseSettings):
         """Fuentes marcadas como habilitadas, sin comprobar credenciales."""
         flags = {
             "reddit": self.reddit_enabled,
+            "lemmy": self.lemmy_enabled,
             "x": self.x_enabled,
             "tiktok": self.tiktok_enabled,
             "instagram": self.instagram_enabled,

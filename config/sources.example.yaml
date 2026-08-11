@@ -84,6 +84,28 @@ sources:
       - MadeMeSmile
 
   # ---------------------------------------------------------------------------
+  # Lemmy -- la alternativa federada a Reddit. API publica, sin credenciales.
+  #
+  # Da mas informacion que los feeds de Reddit: votos y comentarios reales, el
+  # tipo MIME del medio, y banderas de post fijado y de cuenta bot.
+  #
+  # `communities` acepta el formato `nombre@instancia`. Si se deja vacia se usa
+  # la portada de la instancia, que ya viene agregada y cuesta una sola
+  # peticion.
+  # ---------------------------------------------------------------------------
+  lemmy:
+    weight: 0.8
+    budget: 50
+    instance: https://lemmy.world
+    # TopHour | TopSixHour | TopTwelveHour | TopDay | TopWeek | Hot | Active
+    sort: TopDay
+    delay_seconds: 2
+    communities:
+      - memes@lemmy.ml
+      - lemmyshitpost@lemmy.world
+      - funny@sh.itjust.works
+
+  # ---------------------------------------------------------------------------
   # X / Twitter
   #
   # backend `api`   -> requiere tier Basic de pago (~200 USD/mes) para buscar.
