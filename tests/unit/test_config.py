@@ -118,15 +118,19 @@ def test_validate_for_publishing_exige_token_y_chat() -> None:
 
 def test_fuentes_habilitadas() -> None:
     settings = Settings(
-        reddit_enabled=True, lemmy_enabled=False, x_enabled=True, tiktok_enabled=False
+        reddit_enabled=True,
+        lemmy_enabled=False,
+        bluesky_enabled=False,
+        x_enabled=True,
+        tiktok_enabled=False,
     )
     assert set(settings.enabled_source_names()) == {"reddit", "x"}
 
 
 def test_las_fuentes_sin_credenciales_vienen_activadas() -> None:
-    """Reddit y Lemmy no piden claves, asi que el bot publica nada mas instalarlo."""
+    """Ninguna de las tres pide claves: el bot publica nada mas instalarlo."""
     activas = set(Settings().enabled_source_names())
-    assert {"reddit", "lemmy"} <= activas
+    assert {"reddit", "lemmy", "bluesky"} <= activas
     # Las de riesgo de ToS, no.
     assert not {"tiktok", "instagram"} & activas
 

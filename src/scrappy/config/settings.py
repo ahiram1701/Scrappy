@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     # hay ninguna credencial que configurar.
     lemmy_enabled: bool = True
 
+    # -- Bluesky ------------------------------------------------------------
+    # AppView publico, sin autenticacion. Es la fuente pensada para pillar lo
+    # que empieza a moverse antes de llegar a las redes grandes.
+    bluesky_enabled: bool = True
+
     # -- Fuentes con riesgo de ToS ------------------------------------------
     enable_tos_risky_sources: bool = False
 
@@ -198,6 +203,7 @@ class Settings(BaseSettings):
         flags = {
             "reddit": self.reddit_enabled,
             "lemmy": self.lemmy_enabled,
+            "bluesky": self.bluesky_enabled,
             "x": self.x_enabled,
             "tiktok": self.tiktok_enabled,
             "instagram": self.instagram_enabled,

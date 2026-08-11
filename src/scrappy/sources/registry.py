@@ -16,6 +16,7 @@ from scrappy.config.settings import Settings
 from scrappy.core.errors import ToSAcknowledgementRequiredError
 from scrappy.observability.logging import get_logger
 from scrappy.sources.base import DEFAULT_USER_AGENT, SourceAdapter
+from scrappy.sources.bluesky import BlueskySource
 from scrappy.sources.instagram import InstagramSource
 from scrappy.sources.lemmy import LemmySource
 from scrappy.sources.reddit import RedditSource
@@ -29,6 +30,7 @@ AdapterFactory = Callable[..., SourceAdapter]
 _FACTORIES: dict[str, AdapterFactory] = {
     "reddit": RedditSource,
     "lemmy": LemmySource,
+    "bluesky": BlueskySource,
     "x": build_x_source,
     "tiktok": TikTokSource,
     "instagram": InstagramSource,
