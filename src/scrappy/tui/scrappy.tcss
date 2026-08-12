@@ -1,0 +1,147 @@
+/* Estilos de la TUI de Scrappy.
+ *
+ * Paleta sobria a proposito: la informacion que importa son los scores y el
+ * estado de las fuentes, y un fondo llamativo solo compite con ellos.
+ */
+
+Screen {
+    background: $surface;
+}
+
+#status-bar {
+    dock: bottom;
+    height: 1;
+    padding: 0 1;
+    background: $panel;
+    color: $text-muted;
+}
+
+/* --------------------------------------------------------------------------
+ * Panel
+ * ------------------------------------------------------------------------ */
+.seccion {
+    border: round $primary;
+    padding: 0 1;
+    margin: 0 1 1 1;
+}
+
+.seccion-titulo {
+    text-style: bold;
+    color: $accent;
+}
+
+#salud-grid {
+    layout: grid;
+    grid-size: 2;
+    grid-columns: 24 1fr;
+    height: auto;
+}
+
+.ok {
+    color: $success;
+}
+
+.aviso {
+    color: $warning;
+}
+
+.error {
+    color: $error;
+}
+
+#acciones-scheduler {
+    height: auto;
+    padding: 1 0;
+}
+
+#acciones-scheduler Button {
+    margin: 0 1 0 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Candidatos
+ * ------------------------------------------------------------------------ */
+#candidatos-layout {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#tabla-candidatos {
+    width: 2fr;
+    height: 1fr;
+}
+
+#desglose {
+    width: 1fr;
+    height: 1fr;
+    border: round $primary;
+    padding: 0 1;
+    overflow-y: auto;
+}
+
+#barra-progreso {
+    height: auto;
+    padding: 0 1;
+}
+
+/* --------------------------------------------------------------------------
+ * Configuracion
+ * ------------------------------------------------------------------------ */
+#config-scroll {
+    height: 1fr;
+}
+
+.campo {
+    layout: horizontal;
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+.campo-etiqueta {
+    width: 28;
+    padding: 1 1 0 0;
+    color: $text-muted;
+}
+
+.campo Input {
+    width: 1fr;
+}
+
+.ayuda {
+    color: $text-muted;
+    padding: 0 0 1 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Modal de confirmacion
+ * ------------------------------------------------------------------------ */
+ConfirmModal {
+    align: center middle;
+}
+
+#confirm-caja {
+    width: 72;
+    height: auto;
+    border: thick $warning;
+    background: $surface;
+    padding: 1 2;
+}
+
+#confirm-titulo {
+    text-style: bold;
+    color: $warning;
+    padding: 0 0 1 0;
+}
+
+#confirm-detalle {
+    padding: 0 0 1 0;
+}
+
+#confirm-botones {
+    height: auto;
+    align: right middle;
+}
+
+#confirm-botones Button {
+    margin: 0 0 0 1;
+}

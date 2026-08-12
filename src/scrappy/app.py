@@ -20,7 +20,7 @@ from scrappy.config.loader import SourcesConfig, load_sources_config
 from scrappy.config.settings import Settings
 from scrappy.core.errors import ConfigError
 from scrappy.core.models import RunReport
-from scrappy.core.pipeline import Pipeline
+from scrappy.core.pipeline import Pipeline, ProgressCallback
 from scrappy.delivery.publisher import TelegramPublisher
 from scrappy.download.downloader import Downloader
 from scrappy.download.workspace import (
@@ -201,8 +201,14 @@ class ScrappyApp:
     # ------------------------------------------------------------------
     # Operaciones
     # ------------------------------------------------------------------
-    async def run_pipeline(self, *, limit: int | None = None, dry_run: bool = False) -> RunReport:
-        return await self.pipeline.run(limit=limit, dry_run=dry_run)
+    async def run_pipeline(
+        self,
+        *,
+        limit: int | None = None,
+        dry_run: bool = False,
+        on_progress: ProgressCallback | None = None,
+    ) -> RunReport:
+        return await self.pipeline.run(limit=limit, dry_run=dry_run, on_progress=on_progress)
 
     async def source_statuses(self) -> list[SourceStatus]:
         """Estado de todas las fuentes conocidas, no solo de las construidas."""

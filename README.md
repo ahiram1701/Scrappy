@@ -25,7 +25,8 @@ Descubrir ──▶ Filtrar ──▶ Rankear ──▶ Descargar ──▶ Dedu
 
 | | |
 |---|---|
-| 🔍 **Ocho fuentes** | Tres funcionan **sin ninguna credencial**: Reddit, Lemmy y Bluesky |
+| 🔍 **Nueve fuentes** | Tres funcionan **sin ninguna credencial**: Reddit, Lemmy y Bluesky |
+| 🖥️ **Interfaz de terminal** | Doble clic en `Scrappy.bat` y a operar: estado, candidatos, publicar, configurar |
 | 🏆 **Ranking normalizado** | 12k upvotes de Reddit no son 12k likes de TikTok: cada item compite contra los de su propia plataforma |
 | ⚡ **Detecta lo que explota** | El término de *velocidad* premia lo que se hace viral rápido, no lo que ya lo era ayer |
 | 🗑️ **Cero contenido en disco** | Borrado garantizado por `finally`, handler de señales y barrido al arrancar |
@@ -98,6 +99,20 @@ La referencia completa de las ~30 variables está en **[docs/CONFIGURATION.md](d
 
 ## Uso
 
+### Con interfaz
+
+Doble clic en **`Scrappy.bat`**, o desde la terminal:
+
+```bash
+scrappy tui
+```
+
+Tres pantallas: **Panel** (`d`) con el estado y el control del scheduler, **Candidatos** (`c`) para ver qué publicaría y por qué —y publicarlo—, y **Configuración** (`s`) para ajustar pesos y fuentes sin abrir el YAML.
+
+Guía completa en [docs/TUI.md](docs/TUI.md).
+
+### Por línea de comandos
+
 Empieza siempre por un ensayo en seco. No descarga ni publica nada, solo te enseña qué habría elegido y por qué:
 
 ```bash
@@ -159,6 +174,7 @@ Detalle completo y cómo verificarlo: **[docs/EPHEMERAL_STORAGE.md](docs/EPHEMER
 
 | Documento | Para qué |
 |---|---|
+| [TUI.md](docs/TUI.md) | La interfaz de terminal, pantalla a pantalla |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Cómo encaja todo, con diagramas |
 | [CONFIGURATION.md](docs/CONFIGURATION.md) | Todas las variables y claves del YAML |
 | [RANKING.md](docs/RANKING.md) | La fórmula de "lo mejor" y cómo calibrarla |

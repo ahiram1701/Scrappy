@@ -33,7 +33,7 @@ Esa estructura no es casual. La alternativa obvia —descargarlo todo y publicar
 
 ```
                  ┌──────────────────────────────┐
-   entrada       │   cli.py    bot/   scheduler/│    Interfaces
+   entrada       │ cli.py  bot/  tui/  scheduler/│   Interfaces
                  └──────────────┬───────────────┘
                                 │
                  ┌──────────────▼───────────────┐
@@ -194,6 +194,7 @@ El `telegram_file_id` es lo que convierte a Telegram en el archivo real: con él
 | Quiero… | Fichero |
 |---|---|
 | Añadir una plataforma | `sources/` + una línea en `registry.py` → [SOURCES.md](SOURCES.md) |
+| Cambiar la interfaz de terminal | `tui/` → [TUI.md](TUI.md) |
 | Cambiar qué se considera "lo mejor" | `config/sources.yaml` → [RANKING.md](RANKING.md) |
 | Cambiar cómo se ve un post en Telegram | `delivery/captions.py` |
 | Añadir un comando al bot | `bot/handlers.py` |

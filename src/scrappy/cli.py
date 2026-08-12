@@ -211,6 +211,19 @@ def run(
 
 
 # ---------------------------------------------------------------------------
+# tui
+# ---------------------------------------------------------------------------
+@cli.command()
+def tui() -> None:
+    """Abre la interfaz de terminal. Es lo que lanza `Scrappy.bat`."""
+    # Import tardio: Textual tarda un poco en cargar y el resto de comandos no
+    # lo necesitan.
+    from scrappy.tui import run_tui
+
+    run_tui()
+
+
+# ---------------------------------------------------------------------------
 # purge
 # ---------------------------------------------------------------------------
 @cli.command()

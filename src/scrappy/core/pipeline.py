@@ -18,6 +18,7 @@ Cualquier salida del bloque —retorno, excepcion, cancelacion— pasa por el
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from scrappy.config.loader import SourcesConfig
@@ -57,6 +58,31 @@ class DryRunRow:
     verdict: str
 
 
+@dataclass(slots=True, frozen=True)
+class ProgressEvent:
+    """Aviso de que el pipeline ha avanzado.
+
+    Existe para la TUI: un run tarda del orden de 15 segundos, y sin avisos
+    intermedios la interfaz se queda congelada sin poder decir en que va.
+
+    `stage` es el identificador estable (`discovering`, `filtered`,
+    `downloading`, `published`…) y `detail` el texto ya listo para mostrar.
+    `current`/`total` solo vienen rellenos en las etapas que se cuentan por
+    item; en el resto son None y quien escuche debe tratarlo como
+    indeterminado.
+    """
+
+    stage: str
+    detail: str
+    current: int | None = None
+    total: int | None = None
+
+
+#: Se invoca desde el mismo bucle de eventos que el pipeline, asi que puede
+#: tocar la interfaz sin preocuparse por hilos. No debe bloquear ni lanzar.
+ProgressCallback = Callable[[ProgressEvent], None]
+
+
 class Pipeline:
     """Ejecuta una ronda completa de curacion."""
 
@@ -87,10 +113,19 @@ class Pipeline:
     # ------------------------------------------------------------------
     # Ejecucion
     # ------------------------------------------------------------------
-    async def run(self, *, limit: int | None = None, dry_run: bool = False) -> RunReport:
+    async def run(
+        self,
+        *,
+        limit: int | None = None,
+        dry_run: bool = False,
+        on_progress: ProgressCallback | None = None,
+    ) -> RunReport:
         """Ejecuta una ronda.
 
         Args:
+            on_progress: si se indica, se llama en cada cambio de etapa. Lo usa
+                la TUI para no quedarse congelada los ~15 segundos que dura un
+                run. La CLI y el bot lo omiten y se comportan igual que antes.
             limit: cuantos items publicar como maximo. Por defecto,
                 `SCRAPPY_ITEMS_PER_RUN`.
             dry_run: recorre descubrimiento, filtrado y ranking sin descargar ni
@@ -99,14 +134,18 @@ class Pipeline:
         """
         report = RunReport(dry_run=dry_run)
         target = limit if limit is not None else self._settings.items_per_run
+        notify = _make_notifier(on_progress)
 
+        notify("discovering", f"Consultando {len(self._adapters)} fuentes…")
         candidates = await self._discover(report)
         report.discovered = len(candidates)
         if not candidates:
             report.finished_at = utcnow()
+            notify("finished", "Ninguna fuente devolvio candidatos")
             log.info("run_finished", summary=report.summary_line())
             return report
 
+        notify("filtering", f"{len(candidates)} candidatos, aplicando filtros…")
         accepted, rejected = self._filter.partition(candidates)
         for _ in rejected:
             report.record(RunOutcome.FILTERED)
@@ -117,6 +156,7 @@ class Pipeline:
 
         # Se piden mas candidatos que items a publicar porque algunos se caeran
         # al descargar (privados, borrados, demasiado grandes).
+        notify("ranking", f"Puntuando {len(fresh)} candidatos…")
         selected, low_score = self._scorer.select(fresh, limit=target * 3)
         for _ in low_score:
             report.record(RunOutcome.LOW_SCORE)
@@ -124,12 +164,14 @@ class Pipeline:
         if dry_run:
             self.last_dry_run = _build_dry_run_rows(selected, rejected, low_score)
             report.finished_at = utcnow()
+            notify("finished", report.summary_line())
             log.info("dry_run_finished", summary=report.summary_line())
             return report
 
-        await self._process(selected, target, report)
+        await self._process(selected, target, report, notify)
 
         report.finished_at = utcnow()
+        notify("finished", report.summary_line())
         log.info("run_finished", summary=report.summary_line())
         return report
 
@@ -183,7 +225,11 @@ class Pipeline:
         return fresh
 
     async def _process(
-        self, selected: list[ScoredCandidate], target: int, report: RunReport
+        self,
+        selected: list[ScoredCandidate],
+        target: int,
+        report: RunReport,
+        notify: _Notifier,
     ) -> None:
         """Descarga y publica hasta `target` items, uno a uno."""
         if self._publisher is None:
@@ -194,6 +240,12 @@ class Pipeline:
         for scored in selected:
             if published >= target:
                 break
+            notify(
+                "publishing",
+                f"«{scored.candidate.title[:48] or scored.candidate.uid}»",
+                current=published + 1,
+                total=target,
+            )
             if await self._handle_one(scored, report):
                 published += 1
 
@@ -242,6 +294,30 @@ class Pipeline:
         report.published.append(item)
         report.record(RunOutcome.PUBLISHED)
         return True
+
+
+#: Firma interna del avisador, ya con los argumentos por comodidad.
+_Notifier = Callable[..., None]
+
+
+def _make_notifier(on_progress: ProgressCallback | None) -> _Notifier:
+    """Envuelve el callback para que el pipeline no tenga que comprobar None.
+
+    Tambien lo aisla: un fallo en la interfaz que escucha no puede tumbar un
+    run que por lo demas iba bien.
+    """
+    if on_progress is None:
+        return lambda *_args, **_kwargs: None
+
+    def _notify(
+        stage: str, detail: str, *, current: int | None = None, total: int | None = None
+    ) -> None:
+        try:
+            on_progress(ProgressEvent(stage=stage, detail=detail, current=current, total=total))
+        except Exception as exc:  # el pipeline manda, no la interfaz
+            log.warning("progress_callback_failed", error=str(exc))
+
+    return _notify
 
 
 def _build_dry_run_rows(

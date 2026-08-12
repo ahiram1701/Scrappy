@@ -1,0 +1,112 @@
+# La interfaz de terminal
+
+Scrappy se puede manejar entero desde una TUI, sin recordar flags ni abrir la documentación. Se abre con **doble clic en `Scrappy.bat`**, o desde la terminal:
+
+```bash
+scrappy tui
+```
+
+---
+
+## Las tres pantallas
+
+| Tecla | Pantalla | Para qué |
+|---|---|---|
+| `d` | **Panel** | Estado del sistema, fuentes y control del scheduler |
+| `c` | **Candidatos** | Ver qué publicaría y por qué; publicar |
+| `s` | **Configuración** | Editar `sources.yaml` |
+
+Y tres teclas globales: `r` refresca la pantalla actual, `q` sale.
+
+### Panel
+
+Lo mismo que `scrappy health` y `scrappy sources`, pero de un vistazo: ffmpeg, backend de estado, Telegram, workspaces activos, la tabla de las nueve fuentes con lo que le falta a cada una, y cuántos items se han publicado.
+
+Abajo, el control del scheduler: **Arrancar**, **Pausar** y **Reanudar**, con la hora de la próxima ronda. Equivale a los comandos `/pause` y `/resume` del bot.
+
+### Candidatos
+
+Es el `--dry-run` de la CLI convertido en algo navegable. **Explorar** (`e`) ejecuta el pipeline en seco —sin descargar ni publicar nada— y llena la tabla con lo que habría elegido.
+
+Al moverte por las filas, el panel derecho explica de dónde sale la nota: fuente, autor, engagement, comentarios, antigüedad y el veredicto. Eso es lo que convierte la tabla en una herramienta de calibración: sin ver el porqué, ajustar los pesos es adivinar ([RANKING.md](RANKING.md)).
+
+**Publicar** (`p`) sí envía a Telegram, pero antes abre una confirmación que dice cuántos items van, a qué chat, y cuáles encabezan la lista. El foco arranca en *Cancelar*, así que pulsar Enter sin leer no publica nada.
+
+### Configuración
+
+Formularios sobre `config/sources.yaml`: los pesos del ranking, `min_score`, y por cada fuente su `weight`, `budget` y sus listas (subreddits, comunidades, consultas), que se editan separadas por comas.
+
+Dos cosas que conviene saber:
+
+- **Los comentarios del fichero se conservan.** Explican por qué cada valor es el que es, y son lo primero que necesitas al volver meses después. El editor usa round-trip de YAML precisamente para no perderlos.
+- **Se valida antes de escribir.** Si pones un peso fuera de rango, te lo dice y **no toca el fichero**: te quedas con lo que tenías en vez de con un `sources.yaml` roto que impida arrancar.
+
+Lo que el editor **no** hace es crear ni borrar secciones. Solo cambia valores de claves que ya existen. Añadir una fuente nueva al YAML sigue siendo trabajo manual, con su comentario explicando el porqué.
+
+Guardar aplica los cambios en la siguiente ronda, sin reiniciar.
+
+---
+
+## Sin credenciales de Telegram
+
+La TUI arranca igualmente, en **modo solo lectura**: puedes explorar candidatos y calibrar el ranking, pero el botón de publicar queda deshabilitado y la barra de estado dice por qué. Es deliberado: para ajustar los pesos no hace falta un bot.
+
+---
+
+## El lanzador
+
+`Scrappy.bat` está escrito para que un doble clic nunca acabe en una ventana que se cierra sin explicar nada:
+
+- Se sitúa en su propia carpeta, así funciona también desde un acceso directo.
+- Si falta el entorno virtual, dice cómo crearlo y espera a que pulses una tecla.
+- Prefiere **Windows Terminal** si está instalado: da color real y dibuja bien los bordes y los emoji, cosa que la consola clásica hace regular. Si no está, funciona igualmente.
+- Ante un error, señala el log y el comando de diagnóstico, en vez de desaparecer.
+
+---
+
+## Dónde van los logs
+
+Mientras la TUI corre, **Textual es dueño del terminal**. Un solo evento de structlog escrito en pantalla pintaría basura encima de la interfaz, así que los logs van a fichero:
+
+```
+data/scrappy-tui.log
+```
+
+Es el primer sitio donde mirar si algo falla. Los tokens y cookies se redactan igual que siempre, así que el fichero se puede compartir.
+
+---
+
+## Problemas comunes
+
+**Se ven cuadros o interrogaciones en vez de bordes.** Estás en la consola clásica de Windows. Instala [Windows Terminal](https://aka.ms/terminal); el `.bat` lo detecta y lo usa solo.
+
+**«Scrappy no ha arrancado».** El arranque falló. La barra de estado dice por qué, y el detalle completo está en `data/scrappy-tui.log`. Lo más habitual es un `.env` mal formado.
+
+**El botón de publicar está gris.** Falta `SCRAPPY_TELEGRAM_BOT_TOKEN` o `SCRAPPY_TELEGRAM_TARGET_CHAT_ID` en tu `.env`. Comprueba con `scrappy whoami` que el token es válido y que el bot accede al chat.
+
+**Explorar no devuelve nada.** No es la TUI: es que ninguna fuente encontró candidatos. `scrappy sources` dice qué le falta a cada una, y [TROUBLESHOOTING.md](TROUBLESHOOTING.md) cubre los casos por fuente.
+
+---
+
+## Para desarrollar
+
+La TUI es una interfaz más, al mismo nivel que `cli.py` y `bot/`. No duplica lógica: consume `ScrappyApp`, el mismo composition root ([ARCHITECTURE.md](ARCHITECTURE.md)).
+
+```
+src/scrappy/tui/
+├── main.py            # App, navegación, arranque y apagado
+├── screens/           # panel, candidatos, configuración
+├── widgets/confirm.py # modal de confirmación
+├── yaml_editor.py     # round-trip de sources.yaml
+└── scrappy.tcss       # estilos
+```
+
+Los tests usan el `Pilot` de Textual y corren sin terminal real ni red:
+
+```bash
+pytest tests/unit/test_tui.py -v
+```
+
+El más importante es `test_cancelar_el_modal_no_publica`: publicar es irreversible, y esa confirmación es lo único que separa un pulsado accidental de un mensaje en el canal.
+
+Por qué Textual y por qué ruamel: [ADR-0010](adr/0010-tui-con-textual.md).

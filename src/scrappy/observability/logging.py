@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import MutableMapping
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -42,14 +43,35 @@ def _redact_secrets(
     return event_dict
 
 
-def configure_logging(level: str = "INFO", fmt: str = "console") -> None:
+def configure_logging(
+    level: str = "INFO",
+    fmt: str = "console",
+    log_file: Path | None = None,
+) -> None:
     """Configura structlog y la libreria estandar de forma coherente.
 
     Es idempotente: llamarla dos veces (CLI + bot) no duplica handlers.
+
+    Args:
+        level: DEBUG, INFO, WARNING o ERROR.
+        fmt: `console` (coloreado) o `json` (una linea por evento).
+        log_file: si se indica, los logs van ahi en vez de a stdout.
+
+    `log_file` existe por la TUI. Textual es dueno del terminal mientras corre,
+    asi que un solo evento escrito en stdout pintaria basura sobre la interfaz
+    y la dejaria ilegible hasta el siguiente refresco completo. Mandandolos a
+    fichero se conservan enteros y la pantalla queda limpia.
     """
+    handlers: list[logging.Handler] = []
+    if log_file is not None:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+    else:
+        handlers.append(logging.StreamHandler(sys.stdout))
+
     logging.basicConfig(
         format="%(message)s",
-        stream=sys.stdout,
+        handlers=handlers,
         level=getattr(logging, level.upper(), logging.INFO),
         force=True,
     )
@@ -70,7 +92,11 @@ def configure_logging(level: str = "INFO", fmt: str = "console") -> None:
     if fmt == "json":
         processors.append(structlog.processors.JSONRenderer())
     else:
-        processors.append(structlog.dev.ConsoleRenderer(colors=sys.stdout.isatty()))
+        # Sin color al escribir a fichero: stdout sigue siendo un tty aunque el
+        # handler apunte a disco, asi que preguntarle a `isatty()` a secas
+        # llenaria el fichero de escapes ANSI.
+        colors = log_file is None and sys.stdout.isatty()
+        processors.append(structlog.dev.ConsoleRenderer(colors=colors))
 
     structlog.configure(
         processors=processors,

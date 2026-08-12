@@ -5,7 +5,21 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
-### Cambiado
+### Añadido — interfaz de terminal
+
+- **TUI completa con Textual**, que se abre con doble clic en `Scrappy.bat` o con `scrappy tui`. Ver [docs/TUI.md](docs/TUI.md) y [ADR-0010](docs/adr/0010-tui-con-textual.md).
+  - **Panel**: salud del sistema, tabla de fuentes, estadísticas y control del scheduler.
+  - **Candidatos**: el `--dry-run` navegable, con el desglose de por qué cada item sacó su nota, y publicación con confirmación previa que arranca con el foco en *Cancelar*.
+  - **Configuración**: editor de `sources.yaml` que **conserva los comentarios** del fichero y valida antes de escribir.
+  - Sin credenciales de Telegram arranca en modo solo lectura en vez de fallar.
+- `Scrappy.bat`: detecta el venv, prefiere Windows Terminal y explica qué falta en vez de cerrarse.
+- Dos ganchos aditivos en el núcleo, que no cambian el comportamiento de la CLI ni del bot:
+  - `Pipeline.run(on_progress=...)` para informar del avance.
+  - `configure_logging(log_file=...)`, imprescindible porque Textual es dueño del terminal.
+
+### Corregido
+
+- El README decía «ocho fuentes» y son **nueve**. Lo detectó un test de la TUI que cuenta contra el registro en vez de contra un número escrito a mano.
 
 - **Reddit pasa a usar los feeds Atom públicos en vez de la API OAuth.** Reddit cerró el registro autoservicio de aplicaciones en noviembre de 2025 y bloqueó los endpoints `.json` en mayo de 2026; los feeds siguen abiertos y no piden credenciales. Ver [ADR-0009](docs/adr/0009-reddit-por-rss.md).
   - El engagement se deriva de la posición en el feed, que viene ordenado por score.

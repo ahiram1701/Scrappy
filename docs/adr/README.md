@@ -15,5 +15,6 @@ Formato: contexto → decisión → consecuencias.
 | [0007](0007-fuentes-tos-desactivadas.md) | Fuentes que incumplen ToS, desactivadas por defecto | Aceptada |
 | [0008](0008-almacenamiento-efimero.md) | Almacenamiento efímero: Telegram como único archivo | Aceptada |
 | [0009](0009-reddit-por-rss.md) | Reddit por feeds Atom en vez de la API oficial | Aceptada |
+| [0010](0010-tui-con-textual.md) | TUI con Textual, y ruamel para editar la configuración | Aceptada |
 
 Al añadir uno nuevo, numera correlativamente y añádelo a esta tabla.
