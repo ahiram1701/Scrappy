@@ -15,11 +15,14 @@ from datetime import timedelta
 
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
 
 from scrappy.app import ScrappyApp
 from scrappy.bot.auth import admin_only, parse_args
+from scrappy.bot.callbacks import on_callback
+from scrappy.bot.keyboards import menu_fetch, menu_stats
 from scrappy.core.models import utcnow
+from scrappy.diagnostics import run_diagnostics
 from scrappy.download.workspace import iter_active, purge_active
 from scrappy.observability.logging import get_logger
 from scrappy.sources.registry import iter_adapter_names
@@ -53,7 +56,68 @@ def _app(context: ContextTypes.DEFAULT_TYPE) -> ScrappyApp:
 # Comandos
 # ---------------------------------------------------------------------------
 @admin_only
-async def cmd_start(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """`/start` — confirma que todo funciona, no solo lista comandos.
+
+    Antes esto escupia la lista de comandos, que es lo que menos falta hace
+    justo despues de configurar el bot: lo que uno quiere saber es si le
+    alcanza, a donde va a publicar y que fuentes estan listas.
+    """
+    message = update.effective_message
+    if message is None:
+        return
+
+    app = _app(context)
+    aviso = await message.reply_text("Comprobando la configuracion…")
+
+    diagnosis = await run_diagnostics(app.settings, use_network=False)
+
+    lineas = [f"<b>Hola. Soy Scrappy.</b>\n{html.escape(diagnosis.summary())}\n"]
+
+    # Lo primero que uno quiere confirmar: que el mensaje llego, y a donde ira.
+    destino = app.settings.telegram_target_chat_id
+    chat_actual = str(message.chat_id)
+    if destino == chat_actual:
+        lineas.append("✅ Este es el chat donde publicare.")
+    else:
+        lineas.append(f"ℹ️ Publicare en el chat <code>{html.escape(destino)}</code>, no aqui.")
+
+    listas = [s for s in await app.source_statuses() if s.usable]
+    faltan = [s for s in await app.source_statuses() if s.enabled and not s.configured]
+
+    if listas:
+        lineas.append(f"\n<b>Fuentes listas ({len(listas)})</b>")
+        lineas += [f"· {html.escape(s.name)}" for s in listas]
+    else:
+        lineas.append("\n⚠️ <b>Ninguna fuente lista.</b> Mira /sources.")
+
+    if faltan:
+        lineas.append("\n<b>Activadas pero sin configurar</b>")
+        lineas += [f"· {html.escape(s.name)}: {html.escape(s.detail)}" for s in faltan]
+
+    problemas = diagnosis.blocking + diagnosis.warnings
+    if problemas:
+        lineas.append("\n<b>Por revisar</b>")
+        for check in problemas[:5]:
+            lineas.append(f"· {html.escape(check.name)}: {html.escape(check.detail)}")
+            if check.fix:
+                lineas.append(f"  <i>{html.escape(check.fix)}</i>")
+
+    if app.settings.schedule_enabled:
+        lineas.append(
+            f"\nPublicare {app.settings.items_per_run} items cada "
+            f"{app.settings.schedule_interval_minutes} minutos."
+        )
+    else:
+        lineas.append("\nEl scheduler esta desactivado: solo publicare con /fetch.")
+
+    lineas.append("\nEscribe / para ver todo lo que puedo hacer.")
+
+    await aviso.edit_text("\n".join(lineas), parse_mode=ParseMode.HTML)
+
+
+@admin_only
+async def cmd_help(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_message:
         await update.effective_message.reply_text(_HELP, parse_mode=ParseMode.HTML)
 
@@ -67,6 +131,16 @@ async def cmd_fetch(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     app = _app(context)
     args = parse_args(context)
+
+    # Sin argumentos se ofrecen botones: recordar la sintaxis exacta y el
+    # nombre de cada fuente es justo lo que no deberia hacer falta.
+    if not args:
+        activas = [adapter.name for adapter in app.adapters]
+        if not activas:
+            await message.reply_text("No hay ninguna fuente activa. Mira /sources.")
+            return
+        await message.reply_text("De donde quieres que publique?", reply_markup=menu_fetch(activas))
+        return
 
     source: str | None = None
     limit: int | None = None
@@ -128,7 +202,11 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     args = parse_args(context)
-    days = int(args[0]) if args and args[0].isdigit() else 7
+    if not args:
+        await message.reply_text("De que periodo?", reply_markup=menu_stats())
+        return
+
+    days = int(args[0]) if args[0].isdigit() else 7
     since = utcnow() - timedelta(days=days)
 
     app = _app(context)
@@ -228,7 +306,8 @@ def register_handlers(application: Application, app: ScrappyApp) -> None:  # typ
     application.bot_data["scrappy_app"] = app
     application.bot_data["admin_ids"] = app.settings.admin_ids
 
-    application.add_handler(CommandHandler(["start", "help"], cmd_start))
+    application.add_handler(CommandHandler("start", cmd_start))
+    application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("fetch", cmd_fetch))
     application.add_handler(CommandHandler("sources", cmd_sources))
     application.add_handler(CommandHandler("stats", cmd_stats))
@@ -237,10 +316,44 @@ def register_handlers(application: Application, app: ScrappyApp) -> None:  # typ
     application.add_handler(CommandHandler("config", cmd_config))
     application.add_handler(CommandHandler("health", cmd_health))
     application.add_handler(CommandHandler("purge", cmd_purge))
+    application.add_handler(CallbackQueryHandler(on_callback))
     application.add_error_handler(on_error)
+
+    # Registra el menu nativo al arrancar: es lo que hace que Telegram
+    # autocomplete al escribir «/» en vez de tener que recordar los comandos.
+    application.post_init = _registrar_menu
 
     if not app.settings.admin_ids:
         log.warning(
             "no_admins_configured",
             detail="SCRAPPY_TELEGRAM_ADMIN_IDS esta vacio: nadie podra usar comandos",
         )
+
+
+#: Lo que Telegram muestra al escribir «/». El orden es el de uso esperado, no
+#: alfabetico: primero lo que se usa a diario.
+_MENU = [
+    ("start", "Comprobar que todo funciona"),
+    ("fetch", "Buscar y publicar ahora"),
+    ("sources", "Estado de cada fuente"),
+    ("stats", "Que se ha publicado"),
+    ("pause", "Parar el scheduler"),
+    ("resume", "Reanudar el scheduler"),
+    ("health", "Diagnostico del sistema"),
+    ("config", "Configuracion efectiva"),
+    ("purge", "Borrar los ficheros temporales"),
+    ("help", "Lista de comandos"),
+]
+
+
+async def _registrar_menu(application: Application) -> None:  # type: ignore[type-arg]
+    """Publica el menu de comandos. Un fallo aqui no debe impedir arrancar."""
+    from telegram import BotCommand
+
+    try:
+        await application.bot.set_my_commands(
+            [BotCommand(comando, descripcion) for comando, descripcion in _MENU]
+        )
+        log.info("bot_menu_registered", count=len(_MENU))
+    except Exception as exc:  # el bot funciona igual sin menu
+        log.warning("bot_menu_failed", error=str(exc))

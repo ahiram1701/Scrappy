@@ -1,28 +1,62 @@
-"""Configuracion: editar `sources.yaml` sin salir de la TUI.
+"""Ajustes: todo lo configurable, en pestanas.
 
-Expone un subconjunto curado: los pesos del ranking, `min_score`, y por cada
-fuente su `weight`, `budget` y sus listas (subreddits, comunidades, consultas).
+Cubre las dos capas de configuracion del proyecto:
 
-Lo que **no** hace es crear ni borrar secciones. El editor solo cambia valores
-de claves existentes, porque generar estructura desde una interfaz es donde mas
-dano haria y el fichero de ejemplo ya trae todo. Ver `tui/yaml_editor.py`.
+- El **`.env`**, con los secretos y las decisiones de infraestructura.
+- **`sources.yaml`**, con el catalogo y los pesos del ranking.
 
-El guardado valida antes de escribir: si algo esta mal, te quedas con lo que
-tenias en vez de con un `sources.yaml` roto que impida arrancar.
+Los campos no se escriben a mano aqui: se declaran como datos en `fields.py` y
+esta pantalla los pinta de forma generica. Anadir un ajuste a la interfaz es
+una linea alli, no un widget nuevo aqui.
+
+Tres cosas que conviene saber:
+
+- **Los secretos se enmascaran.** El token no debe verse en pantalla; hay un
+  interruptor para revelarlo cuando haga falta comprobarlo.
+- **Se valida antes de escribir**, en los dos ficheros. Un `.env` o un YAML
+  invalidos impiden arrancar, asi que ante un error te quedas con lo que tenias.
+- **Los comentarios de ambos ficheros sobreviven.** Documentan por que cada
+  valor es el que es, y perderlos seria peor que no poder editarlos.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Button, Footer, Header, Input, Static
+from textual.widgets import (
+    Button,
+    Footer,
+    Header,
+    Input,
+    Select,
+    Static,
+    Switch,
+    TabbedContent,
+    TabPane,
+)
 
 from scrappy.core.errors import ConfigError
 from scrappy.observability.logging import get_logger
+from scrappy.tui.env_editor import EnvEditor, is_secret
+from scrappy.tui.fields import (
+    CONTENT_FIELDS,
+    DELIVERY_FIELDS,
+    FILTER_FIELDS,
+    RANKING_FIELDS,
+    SCHEDULE_FIELDS,
+    SOURCE_ENABLED_KEY,
+    STORAGE_FIELDS,
+    TELEGRAM_FIELDS,
+    TOS_RISKY,
+    EnvField,
+    FieldKind,
+    YamlField,
+    fields_for_source,
+)
 from scrappy.tui.yaml_editor import SourcesYamlEditor
 
 if TYPE_CHECKING:
@@ -30,46 +64,39 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-#: Claves de lista que tiene cada fuente. Se editan como texto separado por
-#: comas, que para listas de nombres cortos es mas comodo que un widget de
-#: lista con altas y bajas.
-_LISTAS_POR_FUENTE = {
-    "reddit": ["subreddits"],
-    "lemmy": ["communities"],
-    "bluesky": ["queries"],
-    "imgur": ["tags"],
-    "giphy": ["queries"],
-    "youtube": ["queries", "channels"],
-    "x": ["queries", "accounts"],
-    "tiktok": ["hashtags", "accounts"],
-    "instagram": ["hashtags", "accounts"],
-}
+_ENV_TABS: tuple[tuple[str, tuple[EnvField, ...]], ...] = (
+    ("Telegram", TELEGRAM_FIELDS),
+    ("Contenido", CONTENT_FIELDS),
+    ("Programacion", SCHEDULE_FIELDS),
+    ("Almacenamiento", STORAGE_FIELDS),
+)
 
-#: Campos numericos comunes a todas las fuentes.
-_NUMEROS_POR_FUENTE = ["weight", "budget"]
-
-
-def _campo(etiqueta: str, widget_id: str, valor: str) -> Horizontal:
-    return Horizontal(
-        Static(etiqueta, classes="campo-etiqueta"),
-        Input(value=valor, id=widget_id),
-        classes="campo",
-    )
+_YAML_TABS: tuple[tuple[str, tuple[YamlField, ...]], ...] = (
+    ("Ranking", RANKING_FIELDS),
+    ("Filtros", FILTER_FIELDS),
+    ("Publicacion", DELIVERY_FIELDS),
+)
 
 
 class SettingsScreen(Screen[None]):
-    """Editor de `config/sources.yaml`."""
+    """Editor de `.env` y `sources.yaml`."""
 
-    BINDINGS: ClassVar[list[BindingType]] = [("ctrl+s", "guardar", "Guardar")]
+    BINDINGS: ClassVar[list[BindingType]] = [
+        ("ctrl+s", "guardar", "Guardar"),
+        ("ctrl+r", "recargar", "Descartar"),
+    ]
 
     def __init__(self) -> None:
         super().__init__()
-        self._editor: SourcesYamlEditor | None = None
+        self._env: EnvEditor | None = None
+        self._yaml: SourcesYamlEditor | None = None
 
     @property
     def tui(self) -> ScrappyTUI:
         return self.app  # type: ignore[return-value]
 
+    # ------------------------------------------------------------------
+    # Composicion
     # ------------------------------------------------------------------
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -77,146 +104,303 @@ class SettingsScreen(Screen[None]):
         with Horizontal(id="acciones-scheduler"):
             yield Button("Guardar", id="guardar", variant="success")
             yield Button("Descartar cambios", id="recargar")
-        yield VerticalScroll(id="config-scroll")
+            yield Switch(id="revelar-secretos")
+            yield Static("Mostrar secretos", classes="campo-etiqueta")
+        yield TabbedContent(id="config-tabs")
         yield Footer()
 
     async def on_mount(self) -> None:
         await self.refresh_data()
 
     async def refresh_data(self) -> None:
-        """Relee el fichero y reconstruye el formulario."""
+        """Relee ambos ficheros y reconstruye el formulario."""
         scrappy = self.tui.scrappy
         if scrappy is None:
             return
 
-        editor = SourcesYamlEditor(scrappy.settings.sources_config_path)
+        avisos: list[str] = []
+
+        self._env = EnvEditor(self.tui.env_path)
         try:
-            editor.load()
+            self._env.load()
         except ConfigError as exc:
-            self.query_one("#config-aviso", Static).update(str(exc))
-            return
+            self._env = None
+            avisos.append(str(exc))
 
-        self._editor = editor
-        await self._construir_formulario(editor)
+        self._yaml = SourcesYamlEditor(scrappy.settings.sources_config_path)
+        try:
+            self._yaml.load()
+        except ConfigError as exc:
+            self._yaml = None
+            avisos.append(str(exc))
+
+        await self._construir()
+
         self.query_one("#config-aviso", Static).update(
-            f"Editando {editor.path}. Los comentarios del fichero se conservan al guardar."
+            "\n".join(avisos)
+            if avisos
+            else "Los comentarios de ambos ficheros se conservan al guardar."
         )
 
-    async def _construir_formulario(self, editor: SourcesYamlEditor) -> None:
-        contenedor = self.query_one("#config-scroll", VerticalScroll)
-        await contenedor.remove_children()
+    async def _construir(self) -> None:
+        tabs = self.query_one("#config-tabs", TabbedContent)
+        await tabs.clear_panes()
 
-        # --- ranking ---
-        pesos = Vertical(classes="seccion")
-        await contenedor.mount(pesos)
-        await pesos.mount(Static("Ranking", classes="seccion-titulo"))
-        await pesos.mount(
-            Static(
-                "Los tres pesos deberian sumar 1.0. min_score es la nota minima "
-                "para que un item se llegue a descargar.",
-                classes="ayuda",
-            )
-        )
-        for clave in ("engagement", "velocity", "source"):
-            await pesos.mount(
-                _campo(
-                    f"peso {clave}",
-                    f"rk-{clave}",
-                    str(editor.get_value(["ranking", "weights", clave], "")),
-                )
-            )
-        await pesos.mount(
-            _campo("min_score", "rk-min_score", str(editor.get_value(["ranking", "min_score"], "")))
-        )
+        if self._env is not None:
+            for titulo, campos_env in _ENV_TABS:
+                await tabs.add_pane(self._panel_env(titulo, campos_env))
 
-        # --- fuentes ---
-        for fuente in editor.source_names():
-            bloque = Vertical(classes="seccion")
-            await contenedor.mount(bloque)
-            await bloque.mount(Static(fuente, classes="seccion-titulo"))
+        if self._yaml is not None:
+            for titulo, campos_yaml in _YAML_TABS:
+                await tabs.add_pane(self._panel_yaml(titulo, campos_yaml))
 
-            for clave in _NUMEROS_POR_FUENTE:
-                valor = editor.get_value(["sources", fuente, clave])
-                if valor is None:
-                    continue
-                await bloque.mount(_campo(clave, f"src-{fuente}-{clave}", str(valor)))
-
-            for clave in _LISTAS_POR_FUENTE.get(fuente, []):
-                valor = editor.get_value(["sources", fuente, clave])
-                if valor is None:
-                    continue
-                texto = ", ".join(str(item) for item in valor)
-                await bloque.mount(_campo(clave, f"src-{fuente}-{clave}", texto))
+            for fuente in self._yaml.source_names():
+                await tabs.add_pane(self._panel_fuente(fuente))
 
     # ------------------------------------------------------------------
+    # Construccion de paneles
+    # ------------------------------------------------------------------
+    def _panel_env(self, titulo: str, campos: tuple[EnvField, ...]) -> TabPane:
+        return TabPane(
+            titulo,
+            VerticalScroll(*[self._campo_env(campo) for campo in campos]),
+            id=f"tab-{_slug(titulo)}",
+        )
+
+    def _panel_yaml(self, titulo: str, campos: tuple[YamlField, ...]) -> TabPane:
+        return TabPane(
+            titulo,
+            VerticalScroll(*[self._campo_yaml(campo) for campo in campos]),
+            id=f"tab-{_slug(titulo)}",
+        )
+
+    def _panel_fuente(self, fuente: str) -> TabPane:
+        hijos: list[Any] = []
+
+        # El interruptor de activacion va aqui, junto a los ajustes de la
+        # fuente, que es donde uno lo busca.
+        clave = SOURCE_ENABLED_KEY.get(fuente)
+        if clave and self._env is not None:
+            hijos.append(
+                self._campo_env(
+                    EnvField(
+                        clave,
+                        f"Activar {fuente}",
+                        _aviso_tos(fuente),
+                        kind=FieldKind.BOOL,
+                    )
+                )
+            )
+
+        hijos += [self._campo_yaml(campo) for campo in fields_for_source(fuente)]
+        return TabPane(fuente, VerticalScroll(*hijos), id=f"tab-src-{fuente}")
+
+    # ------------------------------------------------------------------
+    # Widgets
+    # ------------------------------------------------------------------
+    def _campo_env(self, campo: EnvField) -> Vertical:
+        assert self._env is not None
+        valor = self._env.get_value(campo.key)
+        return self._envolver(campo.label, campo.help, self._widget(campo, valor))
+
+    def _campo_yaml(self, campo: YamlField) -> Vertical:
+        assert self._yaml is not None
+        valor = self._yaml.get_value(list(campo.path))
+        return self._envolver(campo.label, campo.help, self._widget(campo, valor))
+
+    @staticmethod
+    def _envolver(etiqueta: str, ayuda: str, widget: Any) -> Vertical:
+        hijos: list[Any] = [
+            Horizontal(Static(etiqueta, classes="campo-etiqueta"), widget, classes="campo")
+        ]
+        if ayuda:
+            hijos.append(Static(ayuda, classes="ayuda"))
+        return Vertical(*hijos, classes="campo-bloque")
+
+    def _widget(self, campo: EnvField | YamlField, valor: Any) -> Any:
+        """Elige el widget segun el tipo declarado."""
+        widget_id = campo.widget_id
+
+        if campo.kind is FieldKind.BOOL:
+            return Switch(value=_como_bool(valor), id=widget_id)
+
+        if campo.kind is FieldKind.CHOICE and isinstance(campo, EnvField):
+            opciones = [(opcion, opcion) for opcion in campo.choices]
+            actual = str(valor) if str(valor) in campo.choices else campo.choices[0]
+            return Select(opciones, value=actual, allow_blank=False, id=widget_id)
+
+        if campo.kind is FieldKind.LIST:
+            texto = ", ".join(str(item) for item in valor) if isinstance(valor, list) else ""
+            return Input(value=texto, id=widget_id)
+
+        # Los secretos se enmascaran; el interruptor de arriba los revela.
+        oculto = isinstance(campo, EnvField) and is_secret(campo.key)
+        return Input(value="" if valor is None else str(valor), password=oculto, id=widget_id)
+
+    # ------------------------------------------------------------------
+    # Acciones
+    # ------------------------------------------------------------------
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        if event.switch.id == "revelar-secretos":
+            self._revelar(event.value)
+
+    def _revelar(self, mostrar: bool) -> None:
+        for campo in TELEGRAM_FIELDS:
+            if not is_secret(campo.key):
+                continue
+            try:
+                self.query_one(f"#{campo.widget_id}", Input).password = not mostrar
+            except Exception:  # la pestana puede no estar montada todavia
+                continue
+
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "guardar":
             await self.action_guardar()
         elif event.button.id == "recargar":
-            await self.refresh_data()
-            self.tui.set_status("Cambios descartados")
+            await self.action_recargar()
+
+    async def action_recargar(self) -> None:
+        await self.refresh_data()
+        self.tui.set_status("Cambios descartados")
 
     async def action_guardar(self) -> None:
-        editor = self._editor
+        """Vuelca el formulario y guarda los dos ficheros.
+
+        Se guarda primero el YAML y despues el `.env`: si el segundo falla, lo
+        peor que queda es una configuracion de catalogo aplicada a medias, y no
+        un `.env` invalido que impida arrancar.
+        """
         scrappy = self.tui.scrappy
-        if editor is None or scrappy is None:
+        if scrappy is None:
             return
 
         try:
-            self._volcar_formulario(editor)
+            self._volcar()
         except ValueError as exc:
             self.notify(str(exc), severity="error")
             return
 
-        try:
-            config = editor.save()
-        except ConfigError as exc:
-            # El fichero no se ha tocado: `save()` valida antes de escribir.
-            self.notify(str(exc), severity="error")
-            self.query_one("#config-aviso", Static).update(
-                "No se guardo nada. El fichero sigue como estaba."
-            )
+        guardados: list[str] = []
+
+        if self._yaml is not None and self._yaml.dirty:
+            try:
+                scrappy.sources_config = self._yaml.save()
+                guardados.append("sources.yaml")
+            except ConfigError as exc:
+                self.notify(str(exc), severity="error")
+                return
+
+        if self._env is not None and self._env.dirty:
+            try:
+                self._env.save()
+                guardados.append(".env")
+            except ConfigError as exc:
+                self.notify(str(exc), severity="error")
+                return
+
+        if not guardados:
+            self.tui.set_status("No habia cambios que guardar")
             return
 
-        # Recargar en caliente: el pipeline usa esta config en el proximo run.
-        scrappy.sources_config = config
-        self.tui.set_status(f"Guardado en {editor.path}")
-        self.notify("Configuracion guardada. Se aplica en la proxima ronda.")
+        self.tui.set_status(f"Guardado: {', '.join(guardados)}")
+        if ".env" in guardados:
+            self.notify(
+                "El .env se aplica al reiniciar Scrappy. Los cambios de "
+                "sources.yaml valen ya en la proxima ronda.",
+                timeout=8,
+            )
+        else:
+            self.notify("Se aplica en la proxima ronda.")
 
-    def _volcar_formulario(self, editor: SourcesYamlEditor) -> None:
-        """Lleva lo escrito en los campos al editor.
+    def _volcar(self) -> None:
+        """Lleva lo escrito en los widgets a los editores.
 
         Raises:
             ValueError: algun campo numerico no lo es.
         """
-        for campo in self.query(Input):
-            identificador = campo.id or ""
-            texto = campo.value.strip()
+        for entrada in self.query(Input):
+            self._volcar_uno(entrada.id or "", entrada.value.strip())
 
-            if identificador.startswith("rk-"):
-                clave = identificador.removeprefix("rk-")
-                ruta = (
-                    ["ranking", "min_score"]
-                    if clave == "min_score"
-                    else ["ranking", "weights", clave]
-                )
-                editor.set_value(ruta, _como_numero(texto, clave))
-                continue
+        for interruptor in self.query(Switch):
+            # El de revelar secretos es de la interfaz, no un ajuste.
+            if interruptor.id != "revelar-secretos":
+                self._volcar_uno(interruptor.id or "", "true" if interruptor.value else "false")
 
-            if identificador.startswith("src-"):
-                _, fuente, clave = identificador.split("-", 2)
-                ruta = ["sources", fuente, clave]
-                if clave in _NUMEROS_POR_FUENTE:
-                    editor.set_value(ruta, _como_numero(texto, f"{fuente}.{clave}"))
-                else:
-                    partes = [p.strip() for p in texto.split(",") if p.strip()]
-                    editor.set_value(ruta, partes)
+        for desplegable in self.query(Select):
+            elegido = desplegable.value
+            if elegido is not None:
+                self._volcar_uno(desplegable.id or "", str(elegido))
+
+    def _volcar_uno(self, widget_id: str, texto: str) -> None:
+        if widget_id.startswith("env-") and self._env is not None:
+            self._env.set_value(widget_id.removeprefix("env-"), texto)
+            return
+
+        if widget_id.startswith("yaml-") and self._yaml is not None:
+            ruta = widget_id.removeprefix("yaml-").split("__")
+            self._yaml.set_value(ruta, _convertir(ruta, texto))
+
+    # ------------------------------------------------------------------
 
 
-def _como_numero(texto: str, etiqueta: str) -> float | int:
-    """Convierte a int si no tiene decimales, para no escribir `budget: 60.0`."""
+def _slug(titulo: str) -> str:
+    return titulo.lower().replace(" ", "-")
+
+
+def _aviso_tos(fuente: str) -> str:
+    if fuente in TOS_RISKY:
+        return (
+            "Incumple los terminos de su plataforma. Necesita ademas "
+            "«Permitir fuentes con riesgo de ToS» en Almacenamiento. "
+            "Lee docs/LEGAL.md."
+        )
+    if fuente == "x":
+        return "El backend `api` necesita el tier de pago de X; el `scrape` incumple sus terminos."
+    return ""
+
+
+def _como_bool(valor: Any) -> bool:
+    if isinstance(valor, bool):
+        return valor
+    return str(valor).strip().lower() in {"true", "1", "yes", "si"}
+
+
+#: Claves del YAML que son listas. El resto se interpreta por su contenido.
+_CLAVES_LISTA = frozenset(
+    {
+        "subreddits",
+        "communities",
+        "queries",
+        "accounts",
+        "channels",
+        "hashtags",
+        "tags",
+        "blocked_keywords",
+        "blocked_authors",
+        "allowed_languages",
+    }
+)
+
+#: Claves del YAML que son booleanas.
+_CLAVES_BOOL = frozenset({"show_score", "show_source_badge", "silent_notifications"})
+
+
+def _convertir(ruta: list[str], texto: str) -> Any:
+    """Convierte el texto del widget al tipo que espera el YAML."""
+    hoja = ruta[-1]
+
+    if hoja in _CLAVES_LISTA:
+        return [parte.strip() for parte in texto.split(",") if parte.strip()]
+
+    if hoja in _CLAVES_BOOL:
+        return _como_bool(texto)
+
+    # `instance`, `sort`, `rating`, `window` son texto libre.
+    if hoja in {"instance", "sort", "rating", "window"}:
+        return texto
+
     try:
-        valor = float(texto)
+        numero = float(texto)
     except ValueError as exc:
-        raise ValueError(f"«{etiqueta}» debe ser un numero, y pone «{texto}»") from exc
-    return int(valor) if valor.is_integer() else valor
+        raise ValueError(f"«{'.'.join(ruta)}» debe ser un numero, y pone «{texto}»") from exc
+    return int(numero) if numero.is_integer() else numero

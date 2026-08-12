@@ -91,10 +91,31 @@ Screen {
     height: 1fr;
 }
 
+.campo-bloque {
+    height: auto;
+    padding: 0 1;
+}
+
 .campo {
     layout: horizontal;
     height: auto;
     padding: 0 0 1 0;
+}
+
+.campo Switch {
+    margin: 0 1 0 0;
+}
+
+.campo Select {
+    width: 1fr;
+}
+
+TabbedContent {
+    height: 1fr;
+}
+
+TabPane {
+    padding: 1 0;
 }
 
 .campo-etiqueta {

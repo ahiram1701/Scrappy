@@ -63,9 +63,12 @@ class ScrappyTUI(App[None]):
         Binding("q", "quit", "Salir"),
     ]
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, *, env_path: Path | None = None) -> None:
         super().__init__()
         self._settings = settings
+        #: Fichero `.env` que edita la pantalla de ajustes. Parametrizable para
+        #: que los tests no toquen el del usuario.
+        self.env_path = env_path or Path(".env")
         #: Se rellena en `on_mount`. Las pantallas deben comprobarlo: durante
         #: el primer instante y si el arranque falla, es None.
         self.scrappy: ScrappyApp | None = None
@@ -174,3 +177,6 @@ class ScrappyTUI(App[None]):
 def run_tui(settings: Settings | None = None) -> None:
     """Punto de entrada. Lo llaman `scrappy tui` y `Scrappy.bat`."""
     ScrappyTUI(settings).run()
+
+
+__all__ = ["ScrappyTUI", "StatusBar", "run_tui"]

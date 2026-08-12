@@ -72,9 +72,7 @@ def test_solo_cambia_la_linea_pedida(editor: EnvEditor, env_path: Path) -> None:
 
     guardado = env_path.read_text(encoding="utf-8")
     diferencias = [
-        (a, b)
-        for a, b in zip(original.splitlines(), guardado.splitlines(), strict=False)
-        if a != b
+        (a, b) for a, b in zip(original.splitlines(), guardado.splitlines(), strict=False) if a != b
     ]
     assert len(diferencias) == 1
     assert "ITEMS_PER_RUN" in diferencias[0][1]

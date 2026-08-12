@@ -248,28 +248,113 @@ async def test_la_configuracion_avisa_si_falta_el_fichero(tui_settings: Settings
         assert "sources.example.yaml" in aviso
 
 
-async def test_la_configuracion_carga_el_fichero_real(tmp_path: Path) -> None:
-    ejemplo = Path("config/sources.example.yaml")
-    if not ejemplo.exists():  # pragma: no cover
-        pytest.skip("no se encuentra config/sources.example.yaml")
+@pytest.fixture
+def entorno_completo(tmp_path: Path) -> tuple[Settings, Path]:
+    """Copias reales de los dos ficheros de configuracion, en un temporal."""
+    ejemplo_yaml = Path("config/sources.example.yaml")
+    ejemplo_env = Path(".env.example")
+    if not ejemplo_yaml.exists() or not ejemplo_env.exists():  # pragma: no cover
+        pytest.skip("no se encuentran las plantillas del proyecto")
 
-    destino = tmp_path / "sources.yaml"
-    destino.write_text(ejemplo.read_text(encoding="utf-8"), encoding="utf-8")
+    yaml_path = tmp_path / "sources.yaml"
+    yaml_path.write_text(ejemplo_yaml.read_text(encoding="utf-8"), encoding="utf-8")
+    env_path = tmp_path / ".env"
+    env_path.write_text(ejemplo_env.read_text(encoding="utf-8"), encoding="utf-8")
+
     settings = Settings(
         telegram_bot_token="",  # type: ignore[arg-type]
         telegram_target_chat_id="",
         state_backend=StateBackend.MEMORY,
         workspace_root=tmp_path / "ws",
-        sources_config_path=destino,
+        sources_config_path=yaml_path,
     )
+    return settings, env_path
 
-    async with ScrappyTUI(settings).run_test() as pilot:
+
+async def test_la_configuracion_cubre_el_env_y_el_yaml(
+    entorno_completo: tuple[Settings, Path],
+) -> None:
+    """La queja original era que apenas habia nada configurable."""
+    settings, env_path = entorno_completo
+
+    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+
+        from textual.widgets import Input, Select, Switch
+
+        ids = {w.id for w in pilot.app.screen.query(Input)}
+        ids |= {w.id for w in pilot.app.screen.query(Switch)}
+        ids |= {w.id for w in pilot.app.screen.query(Select)}
+
+        # Del .env, que antes no se tocaba en absoluto.
+        assert "env-SCRAPPY_TELEGRAM_BOT_TOKEN" in ids
+        assert "env-SCRAPPY_ITEMS_PER_RUN" in ids
+        assert "env-SCRAPPY_STATE_BACKEND" in ids
+        assert "env-SCRAPPY_ALLOW_NSFW" in ids
+        # Secciones del YAML que antes faltaban.
+        assert "yaml-ranking__penalties__too_long" in ids
+        assert "yaml-filters__blocked_authors" in ids
+        assert "yaml-delivery__show_score" in ids
+        # Ajustes propios de cada fuente.
+        assert "yaml-sources__bluesky__window_hours" in ids
+        assert "yaml-sources__reddit__subreddits_per_run" in ids
+
+
+async def test_hay_interruptor_para_activar_cada_fuente(
+    entorno_completo: tuple[Settings, Path],
+) -> None:
+    settings, env_path = entorno_completo
+
+    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+
+        from textual.widgets import Switch
+
+        ids = {w.id for w in pilot.app.screen.query(Switch)}
+        assert "env-SCRAPPY_REDDIT_ENABLED" in ids
+        assert "env-SCRAPPY_TIKTOK_ENABLED" in ids
+
+
+async def test_el_token_se_muestra_enmascarado(
+    entorno_completo: tuple[Settings, Path],
+) -> None:
+    """Un token visible en pantalla es un token que se filtra en una captura."""
+    settings, env_path = entorno_completo
+
+    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
         await pilot.press("s")
         await pilot.pause()
 
         from textual.widgets import Input
 
-        campos = {campo.id for campo in pilot.app.screen.query(Input)}
-        assert "rk-engagement" in campos
-        assert "rk-min_score" in campos
-        assert "src-reddit-subreddits" in campos
+        token = pilot.app.screen.query_one("#env-SCRAPPY_TELEGRAM_BOT_TOKEN", Input)
+        assert token.password is True
+
+        # Y el interruptor lo revela cuando hace falta comprobarlo.
+        await pilot.click("#revelar-secretos")
+        await pilot.pause()
+        assert token.password is False
+
+
+async def test_guardar_conserva_los_comentarios_de_ambos_ficheros(
+    entorno_completo: tuple[Settings, Path],
+) -> None:
+    settings, env_path = entorno_completo
+
+    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+
+        from textual.widgets import Input
+
+        campo = pilot.app.screen.query_one("#yaml-ranking__min_score", Input)
+        campo.value = "0.42"
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+
+    yaml_guardado = settings.sources_config_path.read_text(encoding="utf-8")
+    assert "min_score: 0.42" in yaml_guardado
+    assert "OJO CON EL RATE LIMIT" in yaml_guardado
+    assert "OJO CON EL SIGNO" in env_path.read_text(encoding="utf-8")
