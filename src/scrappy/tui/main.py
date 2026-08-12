@@ -30,6 +30,7 @@ from scrappy.observability.logging import configure_logging, get_logger
 from scrappy.scheduler.jobs import PipelineScheduler
 from scrappy.tui.screens.candidates import CandidatesScreen
 from scrappy.tui.screens.dashboard import DashboardScreen
+from scrappy.tui.screens.help import HelpScreen
 from scrappy.tui.screens.settings import SettingsScreen
 
 log = get_logger(__name__)
@@ -59,6 +60,7 @@ class ScrappyTUI(App[None]):
         Binding("d", "show_dashboard", "Panel"),
         Binding("c", "show_candidates", "Candidatos"),
         Binding("s", "show_settings", "Configuracion"),
+        Binding("question_mark", "show_help", "Ayuda"),
         Binding("r", "refresh_data", "Refrescar"),
         Binding("q", "quit", "Salir"),
     ]
@@ -164,6 +166,9 @@ class ScrappyTUI(App[None]):
 
     async def action_show_settings(self) -> None:
         await self._switch_to(SettingsScreen())
+
+    async def action_show_help(self) -> None:
+        await self.push_screen(HelpScreen())
 
     async def action_refresh_data(self) -> None:
         screen = self.screen

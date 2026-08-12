@@ -13,10 +13,10 @@ scrappy tui
 | Tecla | Pantalla | Para qué |
 |---|---|---|
 | `d` | **Panel** | Estado del sistema, fuentes y control del scheduler |
-| `c` | **Candidatos** | Ver qué publicaría y por qué; publicar |
-| `s` | **Configuración** | Editar `sources.yaml` |
+| `c` | **Candidatos** | Ver qué publicaría y por qué; previsualizar y publicar |
+| `s` | **Configuración** | Editar el `.env` y `sources.yaml` enteros |
 
-Y tres teclas globales: `r` refresca la pantalla actual, `q` sale.
+Y tres teclas globales: `?` abre la ayuda con todos los atajos, `r` refresca la pantalla actual, `q` sale.
 
 ### Panel
 
@@ -30,20 +30,28 @@ Es el `--dry-run` de la CLI convertido en algo navegable. **Explorar** (`e`) eje
 
 Al moverte por las filas, el panel derecho explica de dónde sale la nota: fuente, autor, engagement, comentarios, antigüedad y el veredicto. Eso es lo que convierte la tabla en una herramienta de calibración: sin ver el porqué, ajustar los pesos es adivinar ([RANKING.md](RANKING.md)).
 
+**Vista previa** (`v`) muestra el caption exacto que recibiría Telegram, con su contador de caracteres. Antes, la única forma de saber cómo quedaría un post —si activar `show_score`, si la insignia de fuente estorba— era publicarlo.
+
 **Publicar** (`p`) sí envía a Telegram, pero antes abre una confirmación que dice cuántos items van, a qué chat, y cuáles encabezan la lista. El foco arranca en *Cancelar*, así que pulsar Enter sin leer no publica nada.
 
 ### Configuración
 
-Formularios sobre `config/sources.yaml`: los pesos del ranking, `min_score`, y por cada fuente su `weight`, `budget` y sus listas (subreddits, comunidades, consultas), que se editan separadas por comas.
+Cubre las **dos capas** de configuración del proyecto, repartidas en pestañas:
 
-Dos cosas que conviene saber:
+| Pestañas | Qué contienen |
+|---|---|
+| Telegram · Contenido · Programación · Almacenamiento | Todo el **`.env`**: credenciales, límites, NSFW, backend de estado, nivel de log |
+| Ranking · Filtros · Publicación | Pesos **y penalizaciones**, palabras y autores vetados, idiomas, presentación |
+| Una por fuente | Su `weight`, `budget`, sus listas y **sus claves propias** (`window_hours` de Bluesky, `sort` de Lemmy, `subreddits_per_run` de Reddit…), más un **interruptor para activarla** |
 
-- **Los comentarios del fichero se conservan.** Explican por qué cada valor es el que es, y son lo primero que necesitas al volver meses después. El editor usa round-trip de YAML precisamente para no perderlos.
-- **Se valida antes de escribir.** Si pones un peso fuera de rango, te lo dice y **no toca el fichero**: te quedas con lo que tenías en vez de con un `sources.yaml` roto que impida arrancar.
+Cada campo lleva debajo una línea explicando *por qué* tocarlo. Cuatro cosas más que conviene saber:
 
-Lo que el editor **no** hace es crear ni borrar secciones. Solo cambia valores de claves que ya existen. Añadir una fuente nueva al YAML sigue siendo trabajo manual, con su comentario explicando el porqué.
+- **Los secretos salen enmascarados.** Un token visible en pantalla es un token que se filtra en una captura. El interruptor «Mostrar secretos» los revela cuando hace falta comprobarlos.
+- **Los comentarios de ambos ficheros se conservan.** Explican por qué cada valor es el que es, y son lo primero que necesitas al volver meses después.
+- **Se valida antes de escribir.** Si pones un peso fuera de rango, te lo dice y **no toca el fichero**: te quedas con lo que tenías en vez de con una configuración rota que impida arrancar.
+- **El `.env` se aplica al reiniciar**; los cambios de `sources.yaml` valen ya en la siguiente ronda.
 
-Guardar aplica los cambios en la siguiente ronda, sin reiniciar.
+Lo que el editor de YAML **no** hace es crear ni borrar secciones: solo cambia valores de claves existentes. Añadir una fuente nueva sigue siendo trabajo manual, con su comentario explicando el porqué.
 
 ---
 

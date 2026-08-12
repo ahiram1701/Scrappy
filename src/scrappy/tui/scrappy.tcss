@@ -136,6 +136,18 @@ TabPane {
 /* --------------------------------------------------------------------------
  * Modal de confirmacion
  * ------------------------------------------------------------------------ */
+HelpScreen {
+    align: center middle;
+}
+
+#ayuda-caja {
+    width: 84;
+    height: 80%;
+    border: thick $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
 ConfirmModal {
     align: center middle;
 }

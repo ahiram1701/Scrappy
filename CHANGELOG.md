@@ -5,6 +5,33 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido — revisión de la experiencia de uso
+
+Configurar el bot por primera vez costó varias rondas de depuración por dos erratas que ninguna herramienta detectaba. Esto las convierte en mensajes que dicen qué hacer, y amplía lo que se puede manejar sin editar ficheros a mano.
+
+**Diagnóstico**
+- `scrappy doctor`: revisa la configuración y explica cómo arreglar cada fallo. Detecta el token con el prefijo de la plantilla pegado delante, el chat id con el signo cambiado, el User-Agent genérico de Reddit (causa de los 429), ffmpeg ausente y las fuentes sin credenciales.
+- `scrappy init`: crea el `.env` paso a paso validando cada valor **contra Telegram** antes de escribirlo.
+- Las comprobaciones viven en un módulo único que consumen `doctor`, el `/start` del bot y la TUI: escritas tres veces se desincronizarían.
+
+**La TUI, ya configurable por completo**
+- Pestañas para **todo el `.env`** (credenciales, contenido, programación, almacenamiento), que antes no se tocaba.
+- Las secciones del YAML que faltaban: penalizaciones, filtros y publicación.
+- Los ajustes propios de cada fuente, cada uno en su pestaña, con un **interruptor para activarla**.
+- Los secretos se muestran enmascarados, con interruptor para revelarlos.
+- **Vista previa del caption**: cómo quedará en Telegram sin publicarlo.
+- Pantalla de ayuda (`?`) con todos los atajos.
+
+**Telegram**
+- `/start` confirma que el mensaje llega, dice a qué chat publicará, qué fuentes están listas, qué le falta a las demás y cuándo publicará. Ya no es una lista de comandos.
+- `/fetch` y `/stats` sin argumentos ofrecen botones.
+- Menú nativo con `setMyCommands`.
+- **Acciones bajo cada publicación**: borrar del canal, vetar al autor (se escribe en `sources.yaml`) y 👎, que penaliza a ese autor en el ranking de forma proporcional y con tope.
+
+### Cambiado
+
+- Migración de esquema **v2**: columna `author` en `published` y tabla `feedback`. Probada sobre una base v1 con datos para verificar que no se pierde el historial de deduplicación.
+
 ### Añadido — interfaz de terminal
 
 - **TUI completa con Textual**, que se abre con doble clic en `Scrappy.bat` o con `scrappy tui`. Ver [docs/TUI.md](docs/TUI.md) y [ADR-0010](docs/adr/0010-tui-con-textual.md).

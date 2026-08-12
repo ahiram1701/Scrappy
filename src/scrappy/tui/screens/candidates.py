@@ -37,6 +37,7 @@ class CandidatesScreen(Screen[None]):
     BINDINGS: ClassVar[list[BindingType]] = [
         ("e", "explorar", "Explorar"),
         ("p", "publicar", "Publicar"),
+        ("v", "vista_previa", "Vista previa"),
     ]
 
     def __init__(self) -> None:
@@ -140,6 +141,49 @@ class CandidatesScreen(Screen[None]):
         self.query_one("#desglose-texto", Static).update(
             _formatear_desglose(self._filas[event.cursor_row])
         )
+
+    # ------------------------------------------------------------------
+    # Vista previa
+    # ------------------------------------------------------------------
+    def action_vista_previa(self) -> None:
+        """Muestra el caption exacto que se enviaria a Telegram.
+
+        Hasta ahora la unica forma de saber como quedaria un post era
+        publicarlo, que para calibrar `show_score` o la insignia de fuente es
+        justo lo que no se quiere hacer.
+        """
+        fila = self._fila_seleccionada()
+        if fila is None:
+            self.notify("Explora primero y selecciona una fila.")
+            return
+
+        scrappy = self.tui.require_scrappy()
+        if scrappy is None:
+            return
+
+        from scrappy.core.models import ScoreBreakdown, ScoredCandidate
+        from scrappy.delivery.captions import build_caption
+
+        caption = build_caption(
+            ScoredCandidate(candidate=fila.candidate, score=fila.score, breakdown=ScoreBreakdown()),
+            scrappy.sources_config.delivery,
+        )
+
+        self.query_one("#desglose-texto", Static).update(
+            "Asi se vera en Telegram\n"
+            "(el HTML lo interpreta Telegram; aqui se muestra en crudo)\n\n"
+            f"{caption}\n\n"
+            f"[{len(caption)}/1024 caracteres]"
+        )
+
+    def _fila_seleccionada(self) -> DryRunRow | None:
+        if not self._filas:
+            return None
+        tabla = self.query_one("#tabla-candidatos", DataTable)
+        indice = tabla.cursor_row
+        if indice is None or indice >= len(self._filas):
+            return None
+        return self._filas[indice]
 
     # ------------------------------------------------------------------
     # Publicacion

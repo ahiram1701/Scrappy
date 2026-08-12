@@ -23,6 +23,7 @@ from scrappy.sources.registry import iter_adapter_names
 from scrappy.tui.main import ScrappyTUI, StatusBar
 from scrappy.tui.screens.candidates import CandidatesScreen
 from scrappy.tui.screens.dashboard import DashboardScreen
+from scrappy.tui.screens.help import HelpScreen
 from scrappy.tui.screens.settings import SettingsScreen
 from scrappy.tui.widgets.confirm import ConfirmModal
 from tests.conftest import make_candidate
@@ -167,6 +168,47 @@ async def test_el_desglose_explica_la_fila_seleccionada(tui_settings: Settings) 
         desglose = _texto(pilot.app.screen.query_one("#desglose-texto", Static))
         assert "score" in desglose
         assert "engagement" in desglose
+
+
+async def test_la_vista_previa_muestra_el_caption_real(tui_settings: Settings) -> None:
+    """Antes, la unica forma de ver como quedaria un post era publicarlo."""
+    async with ScrappyTUI(tui_settings).run_test() as pilot:
+        pilot.app.scrappy.pipeline = _PipelineFalso()  # type: ignore[attr-defined,assignment]
+
+        await pilot.press("c")
+        await pilot.press("e")
+        await pilot.pause()
+        await pilot.press("v")
+        await pilot.pause()
+
+        from textual.widgets import Static
+
+        texto = _texto(pilot.app.screen.query_one("#desglose-texto", Static))
+        assert "Asi se vera en Telegram" in texto
+        # La atribucion, que es obligatoria en toda publicacion.
+        assert "ver original" in texto
+        # Y el aviso del limite de Telegram.
+        assert "/1024" in texto
+
+
+async def test_la_vista_previa_sin_seleccion_avisa(tui_settings: Settings) -> None:
+    async with ScrappyTUI(tui_settings).run_test() as pilot:
+        await pilot.press("c")
+        await pilot.press("v")
+        await pilot.pause()
+        # No revienta; simplemente no hay nada que previsualizar.
+        assert isinstance(pilot.app.screen, CandidatesScreen)
+
+
+async def test_la_ayuda_se_abre_y_se_cierra(tui_settings: Settings) -> None:
+    async with ScrappyTUI(tui_settings).run_test() as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert isinstance(pilot.app.screen, HelpScreen)
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(pilot.app.screen, HelpScreen)
 
 
 # ---------------------------------------------------------------------------
