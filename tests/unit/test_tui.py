@@ -25,6 +25,7 @@ from scrappy.tui.screens.candidates import CandidatesScreen
 from scrappy.tui.screens.dashboard import DashboardScreen
 from scrappy.tui.screens.help import HelpScreen
 from scrappy.tui.screens.settings import SettingsScreen
+from scrappy.tui.screens.wizard import WizardScreen
 from scrappy.tui.widgets.confirm import ConfirmModal
 from tests.conftest import make_candidate
 
@@ -57,13 +58,13 @@ def tui_settings(tmp_path: Path) -> Settings:
 # Arranque y navegacion
 # ---------------------------------------------------------------------------
 async def test_arranca_y_muestra_el_panel(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         assert isinstance(pilot.app.screen, DashboardScreen)
         assert pilot.app.scrappy is not None  # type: ignore[attr-defined]
 
 
 async def test_navega_entre_las_tres_pantallas(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         await pilot.press("c")
         assert isinstance(pilot.app.screen, CandidatesScreen)
 
@@ -76,7 +77,7 @@ async def test_navega_entre_las_tres_pantallas(tui_settings: Settings) -> None:
 
 async def test_no_apila_pantallas_al_navegar(tui_settings: Settings) -> None:
     """Sin esto, cambiar de pantalla 20 veces dejaria 20 pantallas vivas."""
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         for _ in range(5):
             await pilot.press("c")
             await pilot.press("d")
@@ -85,7 +86,7 @@ async def test_no_apila_pantallas_al_navegar(tui_settings: Settings) -> None:
 
 
 async def test_el_panel_pinta_la_salud_y_las_fuentes(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         from textual.widgets import DataTable, Static
 
         assert "ffmpeg" in _texto(pilot.app.screen.query_one("#salud", Static))
@@ -102,7 +103,7 @@ async def test_el_panel_pinta_la_salud_y_las_fuentes(tui_settings: Settings) -> 
 # Degradacion sin credenciales
 # ---------------------------------------------------------------------------
 async def test_sin_telegram_no_se_puede_publicar(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         assert pilot.app.can_publish is False  # type: ignore[attr-defined]
 
         await pilot.press("c")
@@ -113,7 +114,7 @@ async def test_sin_telegram_no_se_puede_publicar(tui_settings: Settings) -> None
 
 async def test_lo_dice_en_la_barra_de_estado(tui_settings: Settings) -> None:
     """Mejor explicarlo que dejar un boton gris sin motivo."""
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         barra = pilot.app.query_one("#status-bar", StatusBar)
         assert "solo lectura" in barra.message
 
@@ -139,7 +140,7 @@ class _PipelineFalso:
 
 
 async def test_explorar_llena_la_tabla(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         pilot.app.scrappy.pipeline = _PipelineFalso()  # type: ignore[attr-defined,assignment]
 
         await pilot.press("c")
@@ -153,7 +154,7 @@ async def test_explorar_llena_la_tabla(tui_settings: Settings) -> None:
 
 
 async def test_el_desglose_explica_la_fila_seleccionada(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         pilot.app.scrappy.pipeline = _PipelineFalso()  # type: ignore[attr-defined,assignment]
 
         await pilot.press("c")
@@ -172,7 +173,7 @@ async def test_el_desglose_explica_la_fila_seleccionada(tui_settings: Settings) 
 
 async def test_la_vista_previa_muestra_el_caption_real(tui_settings: Settings) -> None:
     """Antes, la unica forma de ver como quedaria un post era publicarlo."""
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         pilot.app.scrappy.pipeline = _PipelineFalso()  # type: ignore[attr-defined,assignment]
 
         await pilot.press("c")
@@ -192,7 +193,7 @@ async def test_la_vista_previa_muestra_el_caption_real(tui_settings: Settings) -
 
 
 async def test_la_vista_previa_sin_seleccion_avisa(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         await pilot.press("c")
         await pilot.press("v")
         await pilot.pause()
@@ -200,8 +201,50 @@ async def test_la_vista_previa_sin_seleccion_avisa(tui_settings: Settings) -> No
         assert isinstance(pilot.app.screen, CandidatesScreen)
 
 
+async def test_el_asistente_aparece_si_falta_lo_basico(tui_settings: Settings) -> None:
+    """Los ajustes de prueba no tienen token, asi que no se puede publicar."""
+    async with ScrappyTUI(tui_settings, show_wizard=True).run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(pilot.app.screen, WizardScreen)
+
+        from textual.widgets import Static
+
+        texto = _texto(pilot.app.screen.query_one("#wizard-texto", Static))
+        # Dice que falta y como arreglarlo, no solo que algo va mal.
+        assert "Token del bot" in texto
+        assert "BotFather" in texto
+
+
+async def test_el_asistente_no_molesta_si_todo_esta_bien(tmp_path: Path) -> None:
+    """Quien ya lo tiene configurado no debe toparse con un asistente."""
+    completo = Settings(
+        telegram_bot_token="8912040901:AAGQ81ToRpm44qGQqeX5DE_sU7Jx2b0JOcU",  # type: ignore[arg-type]
+        telegram_target_chat_id="1412545148",
+        telegram_admin_ids="1412545148",
+        reddit_user_agent="windows:scrappy:0.1.0 (by /u/pruebas)",
+        state_backend=StateBackend.MEMORY,
+        workspace_root=tmp_path / "ws",
+        sources_config_path=tmp_path / "no.yaml",
+    )
+
+    async with ScrappyTUI(completo, show_wizard=True).run_test() as pilot:
+        await pilot.pause()
+        # Sin token invalido ni fuentes apagadas, no hay nada que bloquee.
+        assert not isinstance(pilot.app.screen, WizardScreen)
+
+
+async def test_cerrar_el_asistente_deja_usar_la_aplicacion(tui_settings: Settings) -> None:
+    """«Ahora no» no puede dejar la interfaz bloqueada."""
+    async with ScrappyTUI(tui_settings, show_wizard=True).run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert isinstance(pilot.app.screen, DashboardScreen)
+
+
 async def test_la_ayuda_se_abre_y_se_cierra(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         await pilot.press("question_mark")
         await pilot.pause()
         assert isinstance(pilot.app.screen, HelpScreen)
@@ -215,7 +258,7 @@ async def test_la_ayuda_se_abre_y_se_cierra(tui_settings: Settings) -> None:
 # LA prueba: la confirmacion protege de publicar sin querer
 # ---------------------------------------------------------------------------
 async def test_publicar_pide_confirmacion(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         pilot.app.can_publish = True  # type: ignore[attr-defined]
         pilot.app.scrappy.pipeline = _PipelineFalso()  # type: ignore[attr-defined,assignment]
 
@@ -228,7 +271,7 @@ async def test_publicar_pide_confirmacion(tui_settings: Settings) -> None:
 
 async def test_cancelar_el_modal_no_publica(tui_settings: Settings) -> None:
     """Publicar es irreversible: cancelar tiene que dejarlo todo como estaba."""
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         falso = _PipelineFalso()
         pilot.app.can_publish = True  # type: ignore[attr-defined]
         pilot.app.scrappy.pipeline = falso  # type: ignore[attr-defined,assignment]
@@ -247,7 +290,7 @@ async def test_cancelar_el_modal_no_publica(tui_settings: Settings) -> None:
 
 async def test_el_foco_arranca_en_cancelar(tui_settings: Settings) -> None:
     """Pulsar Enter sin leer el modal no debe publicar."""
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         pilot.app.can_publish = True  # type: ignore[attr-defined]
         pilot.app.scrappy.pipeline = _PipelineFalso()  # type: ignore[attr-defined,assignment]
 
@@ -260,7 +303,7 @@ async def test_el_foco_arranca_en_cancelar(tui_settings: Settings) -> None:
 
 
 async def test_confirmar_si_publica(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         falso = _PipelineFalso()
         pilot.app.can_publish = True  # type: ignore[attr-defined]
         pilot.app.scrappy.pipeline = falso  # type: ignore[attr-defined,assignment]
@@ -280,7 +323,7 @@ async def test_confirmar_si_publica(tui_settings: Settings) -> None:
 # Configuracion
 # ---------------------------------------------------------------------------
 async def test_la_configuracion_avisa_si_falta_el_fichero(tui_settings: Settings) -> None:
-    async with ScrappyTUI(tui_settings).run_test() as pilot:
+    async with ScrappyTUI(tui_settings, show_wizard=False).run_test() as pilot:
         await pilot.press("s")
         await pilot.pause()
 
@@ -319,7 +362,7 @@ async def test_la_configuracion_cubre_el_env_y_el_yaml(
     """La queja original era que apenas habia nada configurable."""
     settings, env_path = entorno_completo
 
-    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
+    async with ScrappyTUI(settings, env_path=env_path, show_wizard=False).run_test() as pilot:
         await pilot.press("s")
         await pilot.pause()
 
@@ -348,7 +391,7 @@ async def test_hay_interruptor_para_activar_cada_fuente(
 ) -> None:
     settings, env_path = entorno_completo
 
-    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
+    async with ScrappyTUI(settings, env_path=env_path, show_wizard=False).run_test() as pilot:
         await pilot.press("s")
         await pilot.pause()
 
@@ -365,7 +408,7 @@ async def test_el_token_se_muestra_enmascarado(
     """Un token visible en pantalla es un token que se filtra en una captura."""
     settings, env_path = entorno_completo
 
-    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
+    async with ScrappyTUI(settings, env_path=env_path, show_wizard=False).run_test() as pilot:
         await pilot.press("s")
         await pilot.pause()
 
@@ -385,7 +428,7 @@ async def test_guardar_conserva_los_comentarios_de_ambos_ficheros(
 ) -> None:
     settings, env_path = entorno_completo
 
-    async with ScrappyTUI(settings, env_path=env_path).run_test() as pilot:
+    async with ScrappyTUI(settings, env_path=env_path, show_wizard=False).run_test() as pilot:
         await pilot.press("s")
         await pilot.pause()
 

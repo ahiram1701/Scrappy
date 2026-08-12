@@ -26,12 +26,14 @@ from textual.widgets import Footer, Header, Static
 from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
 from scrappy.config.settings import Settings
+from scrappy.diagnostics import run_diagnostics
 from scrappy.observability.logging import configure_logging, get_logger
 from scrappy.scheduler.jobs import PipelineScheduler
 from scrappy.tui.screens.candidates import CandidatesScreen
 from scrappy.tui.screens.dashboard import DashboardScreen
 from scrappy.tui.screens.help import HelpScreen
 from scrappy.tui.screens.settings import SettingsScreen
+from scrappy.tui.screens.wizard import WizardResult, WizardScreen, hace_falta_asistente
 
 log = get_logger(__name__)
 
@@ -65,9 +67,18 @@ class ScrappyTUI(App[None]):
         Binding("q", "quit", "Salir"),
     ]
 
-    def __init__(self, settings: Settings | None = None, *, env_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        env_path: Path | None = None,
+        show_wizard: bool = True,
+    ) -> None:
         super().__init__()
         self._settings = settings
+        #: El asistente de primera vez se puede desactivar: en los tests
+        #: estorba, y a quien ya sabe lo que le falta no hay que insistirle.
+        self._show_wizard = show_wizard
         #: Fichero `.env` que edita la pantalla de ajustes. Parametrizable para
         #: que los tests no toquen el del usuario.
         self.env_path = env_path or Path(".env")
@@ -123,6 +134,29 @@ class ScrappyTUI(App[None]):
             self.set_status(
                 "Modo solo lectura: falta configurar Telegram en .env, asi que no se puede publicar"
             )
+
+        await self._ofrecer_asistente(settings)
+
+    async def _ofrecer_asistente(self, settings: Settings) -> None:
+        """Abre el asistente solo si hay algo que impide publicar.
+
+        Sin red: la comprobacion tiene que ser instantanea, y las erratas de
+        formato —que son las que mas cuestan— se detectan sin llamar a nadie.
+        """
+        if not self._show_wizard:
+            return
+
+        diagnosis = await run_diagnostics(settings, use_network=False)
+        if not hace_falta_asistente(diagnosis):
+            return
+
+        # Con callback y no con `push_screen_wait`, que exige estar dentro de
+        # un worker: esto corre en el arranque, no en uno.
+        self.push_screen(WizardScreen(diagnosis), self._tras_asistente)
+
+    def _tras_asistente(self, eleccion: WizardResult) -> None:
+        if eleccion == "settings":
+            self.call_later(self._switch_to, SettingsScreen())
 
     async def on_unmount(self) -> None:
         """Apagado ordenado: cierra el scheduler y purga los workspaces."""

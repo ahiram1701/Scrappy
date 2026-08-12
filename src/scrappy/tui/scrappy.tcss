@@ -136,6 +136,35 @@ TabPane {
 /* --------------------------------------------------------------------------
  * Modal de confirmacion
  * ------------------------------------------------------------------------ */
+WizardScreen {
+    align: center middle;
+}
+
+#wizard-caja {
+    width: 80;
+    height: auto;
+    max-height: 80%;
+    border: thick $warning;
+    background: $surface;
+    padding: 1 2;
+}
+
+#wizard-titulo {
+    text-style: bold;
+    color: $warning;
+    padding: 0 0 1 0;
+}
+
+#wizard-botones {
+    height: auto;
+    align: right middle;
+    padding: 1 0 0 0;
+}
+
+#wizard-botones Button {
+    margin: 0 0 0 1;
+}
+
 HelpScreen {
     align: center middle;
 }

@@ -134,10 +134,14 @@ scrappy fetch --dry-run
 Cuando la selección te convenza:
 
 ```bash
+scrappy doctor                       # revisa la configuración y explica qué arreglar
+scrappy init                         # crea el .env paso a paso, validando cada valor
 scrappy health                       # ffmpeg, estado, Telegram, fuentes
 scrappy fetch --source reddit -n 2   # publica 2 items ahora
 scrappy run                          # bot + scheduler (lo que corre en Docker)
 ```
+
+Si algo no funciona, **empieza siempre por `scrappy doctor`**: no dice solo qué falla, sino cómo arreglarlo.
 
 ### Comandos del bot en Telegram
 
@@ -150,6 +154,8 @@ scrappy run                          # bot + scheduler (lo que corre en Docker)
 | `/config` | Configuración efectiva, sin secretos |
 | `/health` | Diagnóstico, incluido "el disco está limpio" |
 | `/purge` | Borra los temporales ahora mismo |
+
+`/start` confirma que el bot te alcanza, a qué chat publicará y qué fuentes están listas. `/fetch` y `/stats` sin argumentos ofrecen botones, y bajo cada meme publicado hay tres: **borrar**, **vetar al autor** y **👎**, que penaliza a ese autor en el ranking.
 
 Solo responden a los ids de `SCRAPPY_TELEGRAM_ADMIN_IDS`.
 

@@ -48,7 +48,12 @@ class HttpEngine:
 
                 content_type = response.headers.get("content-type", "").split(";")[0].strip()
                 if content_type and not content_type.startswith(_ACCEPTED_PREFIXES):
-                    raise DownloadError(f"tipo de contenido inesperado: {content_type}")
+                    raise DownloadError(
+                        f"el servidor devolvio {content_type} en vez de un medio. "
+                        "Suele significar que el enlace lleva a una pagina y no "
+                        "al fichero, o que la plataforma respondio con un error "
+                        "en HTML. Este item se salta."
+                    )
 
                 declared = response.headers.get("content-length")
                 if declared and int(declared) > self._max_bytes:

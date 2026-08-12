@@ -67,9 +67,16 @@ class TelegramPublisher:
                 "administrador y comprueba SCRAPPY_TELEGRAM_TARGET_CHAT_ID."
             ) from exc
         except BadRequest as exc:
-            raise PublishError(f"Telegram rechazo el medio: {exc}") from exc
+            raise PublishError(
+                f"Telegram rechazo el medio ({exc}). Casi siempre es el tamano: "
+                f"este pesa {media.size_bytes / 1_048_576:.1f} MB y el limite de "
+                "subida de un bot son 50 MB. Baja SCRAPPY_MAX_DURATION_SECONDS "
+                "para que no lleguen clips tan largos."
+            ) from exc
         except TelegramError as exc:
-            raise PublishError(f"fallo de Telegram: {exc}") from exc
+            raise PublishError(
+                f"fallo de Telegram: {exc}. Comprueba la conexion y ejecuta `scrappy doctor`."
+            ) from exc
 
         file_id = _extract_file_id(message)
         bound.info("published", message_id=message.message_id, size=media.size_bytes)

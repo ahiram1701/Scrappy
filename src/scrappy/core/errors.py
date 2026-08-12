@@ -79,7 +79,9 @@ class MediaTooLargeError(DownloadError):
     def __init__(self, size_bytes: int, limit_bytes: int) -> None:
         super().__init__(
             f"el medio ocupa {size_bytes / 1_048_576:.1f} MB y el limite es "
-            f"{limit_bytes / 1_048_576:.1f} MB"
+            f"{limit_bytes / 1_048_576:.1f} MB. Telegram no admite mas de 50 MB "
+            "desde un bot; si esto se repite, baja SCRAPPY_MAX_DURATION_SECONDS "
+            "para que no lleguen clips tan largos."
         )
         self.size_bytes = size_bytes
         self.limit_bytes = limit_bytes
