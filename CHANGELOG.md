@@ -13,6 +13,13 @@ Versionado según [SemVer](https://semver.org/lang/es/).
   - Se validan las respuestas: una página de bloqueo con 200 ya no pasa por feed vacío.
   - Los posts fijados se degradan al engagement mínimo en vez de llevarse la mejor nota.
 
+### Añadido
+
+- **Lemmy** como fuente sin credenciales. API pública versionada; da engagement real, tipo MIME del medio, y banderas de post fijado y de cuenta bot.
+- **Bluesky** como fuente de señal temprana, también sin credenciales. Usa `api.bsky.app` (el host documentado, `public.api.bsky.app`, devuelve 403 desde mediados de 2026) y acota por `window_hours`, porque `sort=top` sin acotar devuelve lo más votado de siempre.
+- **Imgur** y **Giphy**, con clave gratuita de registro instantáneo. Giphy no expone contadores, así que el ranking usa la posición en `trending`.
+- **YouTube Shorts** vía la búsqueda interna de yt-dlp, detrás del flag de ToS.
+
 ### Eliminado
 
 - `SCRAPPY_REDDIT_CLIENT_ID` y `SCRAPPY_REDDIT_CLIENT_SECRET`: ya no se usan. Si los tenías en el `.env`, puedes borrarlos.

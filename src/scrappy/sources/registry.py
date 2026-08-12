@@ -17,11 +17,14 @@ from scrappy.core.errors import ToSAcknowledgementRequiredError
 from scrappy.observability.logging import get_logger
 from scrappy.sources.base import DEFAULT_USER_AGENT, SourceAdapter
 from scrappy.sources.bluesky import BlueskySource
+from scrappy.sources.giphy import GiphySource
+from scrappy.sources.imgur import ImgurSource
 from scrappy.sources.instagram import InstagramSource
 from scrappy.sources.lemmy import LemmySource
 from scrappy.sources.reddit import RedditSource
 from scrappy.sources.tiktok import TikTokSource
 from scrappy.sources.x import build_x_source
+from scrappy.sources.youtube import YouTubeSource
 
 log = get_logger(__name__)
 
@@ -31,6 +34,9 @@ _FACTORIES: dict[str, AdapterFactory] = {
     "reddit": RedditSource,
     "lemmy": LemmySource,
     "bluesky": BlueskySource,
+    "imgur": ImgurSource,
+    "giphy": GiphySource,
+    "youtube": YouTubeSource,
     "x": build_x_source,
     "tiktok": TikTokSource,
     "instagram": InstagramSource,

@@ -146,6 +146,57 @@ sources:
       - dailyviralvid
 
   # ---------------------------------------------------------------------------
+  # Imgur -- clave gratuita de registro instantaneo. Mucho volumen de memes.
+  # La galeria viral se consulta siempre; las etiquetas son opcionales.
+  # ---------------------------------------------------------------------------
+  imgur:
+    weight: 0.7
+    budget: 50
+    window: day           # day | week | month
+    delay_seconds: 1
+    tags:
+      - memes
+      - funny
+
+  # ---------------------------------------------------------------------------
+  # Giphy -- clave beta gratuita (100 llamadas/hora, suficiente de sobra).
+  #
+  # Giphy NO expone likes ni vistas: el ranking usa la posicion en `trending`,
+  # que ya es un ranking hecho por ellos. Las tendencias se consultan siempre;
+  # las busquedas son opcionales y cada una gasta una llamada.
+  # ---------------------------------------------------------------------------
+  giphy:
+    weight: 0.6
+    budget: 40
+    rating: pg-13         # g | pg | pg-13 | r
+    delay_seconds: 1
+    queries:
+      - reaction
+      - fail
+
+  # ---------------------------------------------------------------------------
+  # YouTube Shorts -- requiere ENABLE_TOS_RISKY_SOURCES=true.
+  #
+  # No pide clave ni cookies, pero descargar de YouTube tambien incumple sus
+  # terminos, asi que va detras del mismo flag por coherencia. El riesgo
+  # practico es bastante menor que el de TikTok o Instagram: no hay una cuenta
+  # tuya que puedan limitar.
+  #
+  # `queries` usa la busqueda interna de yt-dlp, que no depende de que los
+  # parametros de la URL de resultados de YouTube sigan significando lo mismo.
+  # ---------------------------------------------------------------------------
+  youtube:
+    weight: 0.7
+    budget: 40
+    results_per_query: 20
+    max_duration: 180     # YouTube ya admite Shorts de hasta 3 minutos
+    min_view_count: 50000
+    queries:
+      - "shorts memes graciosos"
+      - "funny shorts compilation"
+    channels: []
+
+  # ---------------------------------------------------------------------------
   # TikTok -- requiere ENABLE_TOS_RISKY_SOURCES=true. Ver docs/LEGAL.md.
   # ---------------------------------------------------------------------------
   tiktok:

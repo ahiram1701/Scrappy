@@ -209,7 +209,17 @@ class ScrappyApp:
         statuses = [await adapter.status() for adapter in self.adapters]
         built = {status.name for status in statuses}
 
-        for name in ("reddit", "lemmy", "bluesky", "x", "tiktok", "instagram"):
+        for name in (
+            "reddit",
+            "lemmy",
+            "bluesky",
+            "imgur",
+            "giphy",
+            "youtube",
+            "x",
+            "tiktok",
+            "instagram",
+        ):
             if name in built:
                 continue
             enabled = bool(getattr(self.settings, f"{name}_enabled", False))

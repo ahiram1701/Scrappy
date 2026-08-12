@@ -25,7 +25,7 @@ Descubrir ──▶ Filtrar ──▶ Rankear ──▶ Descargar ──▶ Dedu
 
 | | |
 |---|---|
-| 🔍 **Cuatro fuentes** | Reddit (API oficial), X/Twitter, TikTok e Instagram |
+| 🔍 **Ocho fuentes** | Tres funcionan **sin ninguna credencial**: Reddit, Lemmy y Bluesky |
 | 🏆 **Ranking normalizado** | 12k upvotes de Reddit no son 12k likes de TikTok: cada item compite contra los de su propia plataforma |
 | ⚡ **Detecta lo que explota** | El término de *velocidad* premia lo que se hace viral rápido, no lo que ya lo era ayer |
 | 🗑️ **Cero contenido en disco** | Borrado garantizado por `finally`, handler de señales y barrido al arrancar |
@@ -38,10 +38,15 @@ Descubrir ──▶ Filtrar ──▶ Rankear ──▶ Descargar ──▶ Dedu
 
 ## Antes de empezar: lee esto
 
-Este bot **republica trabajo de otras personas**. Dos cosas que conviene tener claras:
+Este bot **republica trabajo de otras personas**. Las fuentes están en tres niveles:
 
-1. **Reddit tiene API oficial y es la fuente recomendada.** Funciona bien, es estable y su uso está permitido.
-2. **X (modo scrape), TikTok e Instagram no tienen API pública para este caso de uso.** Obtener contenido de ellas incumple sus términos de servicio. Por eso vienen **desactivadas** y hace falta poner `SCRAPPY_ENABLE_TOS_RISKY_SOURCES=true` a mano para usarlas. El proyecto no lo hace por ti.
+| Nivel | Fuentes | Qué significa |
+|---|---|---|
+| ✅ **Abiertas** | Lemmy, Bluesky | API pública sin autenticación, por diseño de la plataforma |
+| ✅ **Con clave gratuita** | Reddit *(feeds RSS)*, Imgur, Giphy | Registro autoservicio o ni eso |
+| ⚠️ **Detrás de un flag** | YouTube, TikTok, Instagram, X-scrape | **Incumplen los términos** de sus plataformas. Vienen desactivadas y hace falta `SCRAPPY_ENABLE_TOS_RISKY_SOURCES=true` a mano. El proyecto no lo hace por ti |
+
+Sobre Reddit: su registro de aplicaciones **se cerró en noviembre de 2025** y los endpoints `.json` devuelven 403 desde mayo de 2026. Scrappy usa los feeds Atom públicos, que siguen abiertos y no piden credenciales ([ADR-0009](docs/adr/0009-reddit-por-rss.md)).
 
 El contenido pertenece a quien lo creó. Scrappy siempre acredita al autor y enlaza al original, pero eso no equivale a un permiso. **Lee [docs/LEGAL.md](docs/LEGAL.md)** antes de publicar nada fuera de un canal privado.
 

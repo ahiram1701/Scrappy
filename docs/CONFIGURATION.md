@@ -60,13 +60,46 @@ Y en `sources.yaml`, dos claves propias de esta fuente por el rate limit:
 | `subreddits_per_run` | `3` | Cuántos subreddits consultar por ronda. Se rotan, así que la lista entera se cubre en varias ejecuciones. |
 | `delay_seconds` | `12` | Espera entre subreddits. Bajarlo provoca 429. |
 
+### Lemmy y Bluesky
+
+Ninguna de las dos pide credenciales: sus APIs son públicas sin autenticación.
+
+| Variable | Defecto | Descripción |
+|---|---|---|
+| `LEMMY_ENABLED` | `true` | La instancia y las comunidades se configuran en `sources.yaml`. |
+| `BLUESKY_ENABLED` | `true` | Las consultas se configuran en `sources.yaml`. |
+
+Claves propias en `sources.yaml`:
+
+| Fuente | Clave | Defecto | Descripción |
+|---|---|---|---|
+| lemmy | `instance` | `https://lemmy.world` | Cualquier instancia de Lemmy sirve. |
+| lemmy | `sort` | `TopDay` | `TopHour`, `TopSixHour`, `TopDay`, `TopWeek`, `Hot`, `Active`… |
+| lemmy | `communities` | — | Formato `nombre@instancia`. Vacío = portada de la instancia. |
+| bluesky | `window_hours` | `24` | **Importante.** Sin acotar, `sort=top` devuelve lo más votado de *siempre*. |
+| bluesky | `queries` | — | Términos de búsqueda. |
+
+### Imgur y Giphy
+
+Ambas mantienen el registro autoservicio que Reddit cerró.
+
+| Variable | Defecto | Descripción |
+|---|---|---|
+| `IMGUR_ENABLED` | `false` | |
+| `IMGUR_CLIENT_ID` | — | De [api.imgur.com/oauth2/addclient](https://api.imgur.com/oauth2/addclient), opción *Anonymous usage*. El secreto **no** hace falta. ~12.500 peticiones/día. |
+| `GIPHY_ENABLED` | `false` | |
+| `GIPHY_API_KEY` | — | De [developers.giphy.com](https://developers.giphy.com). La clave beta da 100 llamadas/hora, de sobra para este uso. |
+
+Giphy no expone ningún contador de popularidad, así que el ranking usa la posición en `trending` — que ya es un ranking hecho por ellos.
+
 ### Fuentes con riesgo de ToS
 
 > Léete [LEGAL.md](LEGAL.md) antes de tocar esta sección.
 
 | Variable | Defecto | Descripción |
 |---|---|---|
-| `ENABLE_TOS_RISKY_SOURCES` | `false` | **Interruptor maestro.** Sin esto en `true`, X-scrape, TikTok e Instagram no arrancan aunque estén habilitadas. |
+| `ENABLE_TOS_RISKY_SOURCES` | `false` | **Interruptor maestro.** Sin esto en `true`, YouTube, X-scrape, TikTok e Instagram no arrancan aunque estén habilitadas. |
+| `YOUTUBE_ENABLED` | `false` | Shorts vía yt-dlp, sin clave ni cookies. Va tras el flag porque descargar de YouTube también incumple sus términos, aunque el riesgo práctico sea mucho menor. |
 | `X_ENABLED` | `false` | |
 | `X_BACKEND` | `api` | `api` (oficial, requiere tier de pago para buscar) o `scrape` (yt-dlp, contra ToS). |
 | `X_BEARER_TOKEN` | — | Solo para el backend `api`. |

@@ -100,6 +100,18 @@ class Settings(BaseSettings):
     # que empieza a moverse antes de llegar a las redes grandes.
     bluesky_enabled: bool = True
 
+    # -- Imgur --------------------------------------------------------------
+    # Mantiene el registro autoservicio que Reddit cerro: el Client-ID se saca
+    # al momento. El secreto no hace falta para leer la galeria publica.
+    imgur_enabled: bool = False
+    imgur_client_id: SecretStr = SecretStr("")
+
+    # -- Giphy --------------------------------------------------------------
+    # La clave beta es autoservicio y da 100 llamadas/hora, de sobra para
+    # publicar cada tres horas.
+    giphy_enabled: bool = False
+    giphy_api_key: SecretStr = SecretStr("")
+
     # -- Fuentes con riesgo de ToS ------------------------------------------
     enable_tos_risky_sources: bool = False
 
@@ -107,6 +119,10 @@ class Settings(BaseSettings):
     x_backend: XBackend = XBackend.API
     x_bearer_token: SecretStr = SecretStr("")
     x_cookies_file: Path | None = None
+
+    # YouTube no pide clave ni cookies, pero descargar de ahi tambien incumple
+    # sus terminos, asi que va detras del mismo flag por coherencia.
+    youtube_enabled: bool = False
 
     tiktok_enabled: bool = False
     tiktok_cookies_file: Path | None = None
@@ -204,6 +220,9 @@ class Settings(BaseSettings):
             "reddit": self.reddit_enabled,
             "lemmy": self.lemmy_enabled,
             "bluesky": self.bluesky_enabled,
+            "imgur": self.imgur_enabled,
+            "giphy": self.giphy_enabled,
+            "youtube": self.youtube_enabled,
             "x": self.x_enabled,
             "tiktok": self.tiktok_enabled,
             "instagram": self.instagram_enabled,

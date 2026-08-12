@@ -33,6 +33,35 @@ Dicho esto, Reddit ha dado a entender que RSS podría ser la siguiente superfici
 
 Ten en cuenta que el contenido de Reddit lo suben usuarios, y **muchas veces no son sus autores originales**. Un meme en r/memes puede ser el trabajo de alguien que no tiene ni idea de que está ahí.
 
+### Lemmy — la más limpia de todas ✅
+
+Lemmy expone una API REST pública, versionada y **sin autenticación** para leer comunidades públicas. Y no es una concesión que puedan retirar mañana: la lectura anónima es un requisito técnico de la federación, porque es así como las instancias se hablan entre sí.
+
+No hay términos que incumplir, ni clave que pedir, ni cuota que agotar. Si te preocupa el aspecto legal, esta es la fuente con la que dormir tranquilo.
+
+### Bluesky — abierta por diseño ✅
+
+El AppView público del protocolo AT responde sin autenticación. Como Lemmy, la apertura es parte del diseño del protocolo, no un descuido.
+
+Una salvedad menor: sin autenticar solo se puede leer la primera página de resultados. Scrappy no intenta rodearlo.
+
+### Imgur y Giphy — clave gratuita ✅
+
+Ambas mantienen el registro autoservicio que Reddit cerró, y ambas tienen términos que permiten expresamente el uso de su API con una clave. Estás dentro de lo previsto por la plataforma.
+
+Respeta sus cuotas: unas 12.500 peticiones diarias en Imgur, 100 llamadas por hora con la clave beta de Giphy. Scrappy las respeta de sobra con la configuración por defecto.
+
+### YouTube — zona gris ⚠️
+
+Aquí conviene una corrección honesta: **descargar vídeos de YouTube incumple sus términos de servicio**, aunque yt-dlp sea una herramienta legítima y ampliamente usada.
+
+Lo que sí es cierto es que el perfil de riesgo práctico es mucho menor que el de TikTok o Instagram:
+
+- No hacen falta cookies, así que no hay ninguna cuenta tuya que puedan limitar o bloquear.
+- Es notablemente más estable: no se rompe cada pocas semanas.
+
+Aun así, el criterio del proyecto es "si la plataforma no ofrece una vía para este uso, va detrás del flag", y YouTube no la ofrece. Por eso está desactivada por defecto.
+
 ### X / Twitter — depende del backend ⚠️
 
 | Backend | Situación |
