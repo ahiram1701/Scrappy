@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -208,6 +209,196 @@ def run(
             await app.aclose()
 
     raise typer.Exit(code=_execute(_run))
+
+
+# ---------------------------------------------------------------------------
+# doctor
+# ---------------------------------------------------------------------------
+@cli.command()
+def doctor(
+    offline: Annotated[
+        bool,
+        typer.Option("--offline", help="No consultar a Telegram; solo revisar el formato."),
+    ] = False,
+) -> None:
+    """Revisa la configuracion y explica como arreglar lo que falle."""
+
+    async def _run() -> int:
+        from scrappy.diagnostics import CheckStatus, run_diagnostics
+
+        settings = load_settings_or_die()
+        diagnosis = await run_diagnostics(settings, use_network=not offline)
+
+        estilos = {
+            CheckStatus.OK: ("[green]OK[/]", ""),
+            CheckStatus.WARNING: ("[yellow]AVISO[/]", "yellow"),
+            CheckStatus.ERROR: ("[red]FALLO[/]", "red"),
+            CheckStatus.SKIPPED: ("[dim]--[/]", "dim"),
+        }
+
+        table = Table(title="Diagnostico de Scrappy", show_lines=False)
+        table.add_column("", width=7)
+        table.add_column("comprobacion", style="bold")
+        table.add_column("detalle", overflow="fold")
+
+        for check in diagnosis.checks:
+            marca, estilo = estilos[check.status]
+            detalle = check.detail
+            if check.fix and check.status is not CheckStatus.OK:
+                detalle += f"\n[dim]-> {check.fix}[/]"
+            table.add_row(marca, f"[{estilo}]{check.name}[/]" if estilo else check.name, detalle)
+
+        console.print(table)
+        console.print(f"\n[bold]{diagnosis.summary()}[/]")
+
+        if diagnosis.blocking:
+            console.print(
+                "\nArregla lo marcado como [red]FALLO[/] y vuelve a ejecutar "
+                "[bold]scrappy doctor[/]."
+            )
+            return 1
+        if diagnosis.warnings:
+            console.print("\nPuedes usar Scrappy, pero revisa los avisos.")
+        return 0
+
+    raise typer.Exit(code=_execute(_run))
+
+
+# ---------------------------------------------------------------------------
+# init
+# ---------------------------------------------------------------------------
+@cli.command()
+def init() -> None:
+    """Crea el fichero .env preguntando paso a paso y validando cada valor."""
+
+    async def _run() -> int:
+        from scrappy.tui.env_editor import EnvEditor
+
+        destino = Path(".env")
+        plantilla = Path(".env.example")
+
+        if not plantilla.exists():
+            _fail(f"No se encuentra {plantilla}. Ejecuta esto desde la carpeta del proyecto.")
+
+        if destino.exists():
+            console.print(f"[yellow]{destino} ya existe.[/]")
+            if not typer.confirm("Se sobrescribiran los valores que cambies. Continuar?"):
+                console.print("Cancelado. No se ha tocado nada.")
+                return 0
+
+        editor = EnvEditor(destino if destino.exists() else plantilla)
+        editor.load()
+        editor.path = destino
+
+        console.print("\n[bold]Configuracion de Telegram[/]")
+        console.print(
+            "[dim]El token te lo da @BotFather con /newbot. No se mostrara al escribirlo.[/]\n"
+        )
+
+        token = await _pedir_token()
+        if token is None:
+            return 1
+        editor.set_value("SCRAPPY_TELEGRAM_BOT_TOKEN", token)
+
+        chat_id = await _pedir_chat(token)
+        if chat_id is None:
+            return 1
+        editor.set_value("SCRAPPY_TELEGRAM_TARGET_CHAT_ID", chat_id)
+
+        console.print(
+            "\n[dim]Tu id de usuario, para poder usar los comandos del bot. "
+            "Te lo dice @userinfobot.[/]"
+        )
+        admin = typer.prompt("Tu id de Telegram", default=chat_id if chat_id.isdigit() else "")
+        editor.set_value("SCRAPPY_TELEGRAM_ADMIN_IDS", admin.strip())
+
+        console.print("\n[bold]Reddit[/]")
+        console.print("[dim]No necesita credenciales, solo que te identifiques.[/]")
+        usuario = typer.prompt("Tu usuario de Reddit (sin /u/)", default="")
+        if usuario.strip():
+            editor.set_value(
+                "SCRAPPY_REDDIT_USER_AGENT",
+                f"windows:scrappy:0.1.0 (by /u/{usuario.strip()})",
+            )
+
+        editor.save()
+        console.print(f"\n[green]Escrito {destino}[/]")
+        console.print("Comprueba que todo esta bien con: [bold]scrappy doctor[/]")
+        return 0
+
+    raise typer.Exit(code=_execute(_run))
+
+
+async def _pedir_token() -> str | None:
+    """Pide el token hasta que tenga formato valido y Telegram lo acepte."""
+    from telegram import Bot
+    from telegram.error import TelegramError
+
+    from scrappy.diagnostics import CheckStatus, check_token_format
+
+    for intento in range(3):
+        token = str(typer.prompt("Token del bot", hide_input=True)).strip()
+
+        formato = check_token_format(token)
+        if formato.status is CheckStatus.ERROR:
+            console.print(f"[red]{formato.detail}[/]\n[dim]{formato.fix}[/]")
+            continue
+
+        try:
+            bot = Bot(token)
+            async with bot:
+                me = await bot.get_me()
+            console.print(f"[green]Conectado como @{me.username}[/]")
+            return token
+        except TelegramError as exc:
+            console.print(f"[red]Telegram rechazo el token:[/] {exc}")
+            if intento < 2:
+                console.print("[dim]Comprueba que lo copiaste entero y sin espacios.[/]")
+
+    error_console.print("[red]No se pudo validar el token tras 3 intentos.[/]")
+    return None
+
+
+async def _pedir_chat(token: str) -> str | None:
+    """Pide el chat destino y comprueba que el bot puede alcanzarlo."""
+    from telegram import Bot
+    from telegram.error import TelegramError
+
+    from scrappy.diagnostics import CheckStatus, check_chat_id_format
+
+    console.print(
+        "\n[dim]Para recibirlo en privado, pon tu id de usuario (POSITIVO) y "
+        "pulsa Start en tu bot.\nPara un canal, su id (empieza por -100) con el "
+        "bot como administrador.[/]"
+    )
+
+    for _ in range(3):
+        chat_id = str(typer.prompt("Chat destino")).strip()
+
+        formato = check_chat_id_format(chat_id)
+        if formato.status is CheckStatus.ERROR:
+            console.print(f"[red]{formato.detail}[/]\n[dim]{formato.fix}[/]")
+            continue
+        if formato.status is CheckStatus.WARNING:
+            console.print(f"[yellow]{formato.detail}[/]\n[dim]{formato.fix}[/]")
+            if not typer.confirm("Usarlo de todas formas?", default=False):
+                continue
+
+        try:
+            bot = Bot(token)
+            async with bot:
+                chat = await bot.get_chat(chat_id)
+            console.print(f"[green]El bot alcanza «{chat.title or chat.full_name}»[/]")
+            return chat_id
+        except TelegramError as exc:
+            console.print(f"[red]No se puede acceder a ese chat:[/] {exc}")
+            if chat_id.isdigit():
+                console.print("[dim]Abre tu bot en Telegram y pulsa Start.[/]")
+            else:
+                console.print("[dim]Anade el bot al canal como administrador.[/]")
+
+    error_console.print("[red]No se pudo validar el chat tras 3 intentos.[/]")
+    return None
 
 
 # ---------------------------------------------------------------------------
