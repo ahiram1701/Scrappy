@@ -55,9 +55,16 @@ sources:
   # ---------------------------------------------------------------------------
   # Reddit -- feeds Atom publicos, sin credenciales.
   #
-  # El feed no informa de upvotes, pero viene ORDENADO POR SCORE del periodo,
-  # asi que la posicion es la senal: el primero es el mejor del dia. El scorer
-  # la convierte a percentil igual que haria con los upvotes reales.
+  # El feed no informa de upvotes, pero viene ordenado por el listado `hot` del
+  # subreddit, asi que la posicion es la senal y el scorer la convierte a
+  # percentil igual que haria con los upvotes reales.
+  #
+  # NO HAY OPCION DE ORDEN, y no es un olvido: el feed ignora `sort` y `t`.
+  # Comprobado mandandolos -- `sort=top&t=day` y `sort=new` devuelven la misma
+  # secuencia exacta de ids. Cualquier clave de orden aqui seria decorativa.
+  #
+  # Como `hot` incluye posts de varios dias, si aprietas mucho
+  # SCRAPPY_MAX_AGE_HOURS descartaras buena parte de lo que trae Reddit.
   #
   # OJO CON EL RATE LIMIT: sin autenticar, Reddit responde 429 con facilidad.
   # Por eso no se consultan todos los subreddits en cada ronda, sino que se
@@ -68,8 +75,6 @@ sources:
   reddit:
     weight: 0.9
     budget: 60
-    listing: top          # top | hot | new | rising
-    time_filter: day      # hour | day | week  (solo aplica a `top`)
     subreddits_per_run: 3 # cuantos consultar en cada ronda
     delay_seconds: 12     # espera entre subreddits; bajarlo provoca 429
     subreddits:

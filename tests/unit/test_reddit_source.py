@@ -257,6 +257,28 @@ async def test_no_demota_nada_en_un_feed_homogeneo(
 
 
 @respx.mock
+async def test_no_se_envia_ningun_parametro_de_orden(
+    reddit_settings: Settings, source_config: SourceConfig
+) -> None:
+    """El feed ignora `sort` y `t`, asi que no se mandan.
+
+    Comprobado contra Reddit: `?sort=top&t=day` y `?sort=new` devuelven la
+    secuencia de ids identica. Mandar parametros que el servidor ignora en
+    silencio solo hace creer que el orden se puede cambiar.
+
+    Este test existe para que nadie los reintroduzca por parecer razonables.
+    """
+    route = respx.get(FEED_URL).mock(return_value=_atom(_feed(_entry())))
+
+    async with httpx.AsyncClient() as client:
+        await RedditSource(reddit_settings, source_config, client).discover(60)
+
+    params = route.calls[0].request.url.params
+    assert "sort" not in params
+    assert "t" not in params
+
+
+@respx.mock
 async def test_feed_vacio(reddit_settings: Settings, source_config: SourceConfig) -> None:
     respx.get(FEED_URL).mock(return_value=_atom(_feed()))
 
@@ -291,7 +313,7 @@ async def test_403_explica_que_reddit_pudo_cerrar_los_feeds(
     async with httpx.AsyncClient() as client:
         source = RedditSource(reddit_settings, source_config, client)
         with pytest.raises(SourceError, match="RSS"):
-            await source._fetch_feed("memes", "top", "day")
+            await source._fetch_feed("memes")
 
 
 @respx.mock
@@ -306,7 +328,7 @@ async def test_html_en_vez_de_feed_da_error_claro(
     async with httpx.AsyncClient() as client:
         source = RedditSource(reddit_settings, source_config, client)
         with pytest.raises(SourceError, match="no es un feed valido"):
-            await source._fetch_feed("memes", "top", "day")
+            await source._fetch_feed("memes")
 
 
 @respx.mock

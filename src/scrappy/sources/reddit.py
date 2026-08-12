@@ -22,10 +22,13 @@ cierre. Si un dia deja de funcionar, no sera un fallo de Scrappy.
 Da autor, id, permalink, titulo, fecha, miniatura y —dentro del `<content>`—
 el enlace directo al medio.
 
-**No da upvotes ni comentarios.** Pero el feed viene *ordenado por score del
-dia*, asi que la posicion es la senal: el primero es el mejor del dia. Eso encaja
-incluso mejor que los upvotes brutos en el modelo de percentiles del scorer,
-porque la posicion ya *es* un percentil. Ver `docs/adr/0009-reddit-por-rss.md`.
+**No da upvotes ni comentarios.** Pero viene ordenado por el listado `hot` del
+subreddit —la mezcla de votos y antiguedad que hace el propio Reddit— asi que la
+posicion es la senal. Encaja incluso mejor que los upvotes brutos en el modelo
+de percentiles del scorer, porque la posicion ya *es* un percentil.
+
+Ojo: el orden **no se puede cambiar**. El feed ignora `sort` y `t`; se comprobo
+mandandolos y comparando los ids devueltos. Ver `docs/adr/0009-reddit-por-rss.md`.
 """
 
 from __future__ import annotations
@@ -105,7 +108,7 @@ class RedditSource(SourceAdapter):
             name=self.name,
             enabled=self.settings.reddit_enabled,
             configured=True,
-            detail=f"{len(subreddits)} subreddits, {per_run} por ronda (feeds RSS)",
+            detail=(f"{len(subreddits)} subreddits, {per_run} por ronda (feeds RSS, orden `hot`)"),
         )
 
     # ------------------------------------------------------------------
@@ -117,8 +120,6 @@ class RedditSource(SourceAdapter):
             return []
 
         selection = self._rotate(subreddits)
-        sort = self.config.get_str("listing", "top")
-        time_filter = self.config.get_str("time_filter", "day")
         delay = float(self.config.get_int("delay_seconds", int(_DEFAULT_DELAY_SECONDS)))
 
         candidates: list[RawCandidate] = []
@@ -128,7 +129,7 @@ class RedditSource(SourceAdapter):
                 # se come un 429 casi seguro.
                 await asyncio.sleep(delay)
             try:
-                entries = await self._fetch_feed(subreddit, sort, time_filter)
+                entries = await self._fetch_feed(subreddit)
             except RateLimitedError:
                 # Si nos limitan, insistir con el resto solo empeora las cosas.
                 self.log.warning("rate_limited_stop", subreddit=subreddit)
@@ -164,22 +165,27 @@ class RedditSource(SourceAdapter):
         rotated = subreddits[offset:] + subreddits[:offset]
         return rotated[:per_run]
 
-    async def _fetch_feed(
-        self, subreddit: str, sort: str, time_filter: str
-    ) -> list[ElementTree.Element]:
-        """Descarga y parsea un feed Atom.
+    async def _fetch_feed(self, subreddit: str) -> list[ElementTree.Element]:
+        """Descarga y parsea el feed Atom de un subreddit.
 
-        Se usa `?sort=...` sobre la URL base y no la variante `/top/.rss`, que
-        devuelve 403.
+        **No se envia ningun parametro de orden, y es deliberado.** Comprobado
+        contra Reddit: `?sort=top&t=day` y `?sort=new` devuelven la secuencia de
+        ids *identica*, asi que el feed ignora `sort` por completo. Tampoco es
+        orden cronologico (las edades no crecen de forma monotona): lo que
+        sirve es el listado `hot` por defecto del subreddit.
+
+        Mandar parametros que el servidor ignora en silencio solo sirve para
+        que el siguiente que lea esto crea que puede cambiar el orden.
+
+        Que sea `hot` y no `top` del dia no rompe nada: `hot` es la mezcla de
+        votos y antiguedad que hace el propio Reddit, y para detectar lo que se
+        esta moviendo ahora es incluso mejor senal. Lo que si implica es que el
+        feed incluye posts de varios dias, asi que conviene no apretar
+        `SCRAPPY_MAX_AGE_HOURS` en exceso o se descartara buena parte.
         """
-        params: dict[str, str] = {"sort": sort}
-        if sort == "top":
-            params["t"] = time_filter
-
         try:
             response = await self.client.get(
                 _FEED_URL.format(subreddit=subreddit),
-                params=params,
                 headers={
                     "User-Agent": self.settings.reddit_user_agent,
                     "Accept": "application/atom+xml, application/xml",

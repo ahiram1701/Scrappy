@@ -24,7 +24,14 @@ Usar los **feeds Atom públicos**, que Reddit nunca incluyó en la superficie de
 
 Cuatro consecuencias de diseño:
 
-**1. El engagement sale de la posición en el feed.** El feed no informa de upvotes ni de comentarios, pero viene *ordenado por score del periodo*. La posición es la señal: el primero es el mejor del día. Encaja incluso mejor que los upvotes brutos en el modelo de percentiles del scorer, porque la posición **ya es** un percentil ([ADR-0005](0005-ranking-por-percentiles.md)).
+**1. El engagement sale de la posición en el feed.** El feed no informa de upvotes ni de comentarios, pero viene ordenado por calidad. La posición es la señal, y encaja incluso mejor que los upvotes brutos en el modelo de percentiles del scorer, porque la posición **ya es** un percentil ([ADR-0005](0005-ranking-por-percentiles.md)).
+
+Con un matiz importante que costó descubrir: **el feed ignora `sort` y `t`**. Se comprobó mandándolos y comparando los ids devueltos —`?sort=top&t=day` y `?sort=new` dan la secuencia idéntica— y tampoco es orden cronológico, porque las edades no crecen de forma monótona. Lo que sirve es el listado `hot` del subreddit.
+
+Eso no rompe el diseño: `hot` es la mezcla de votos y antigüedad que hace el propio Reddit, y para detectar lo que se está moviendo ahora es incluso mejor señal que el top del día. Pero sí tiene dos consecuencias prácticas:
+
+- **No se envía ningún parámetro de orden**, porque mandar algo que el servidor ignora en silencio solo confunde a quien lea el código después. Tampoco hay claves de orden en `sources.yaml`: serían decorativas.
+- **`hot` incluye posts de varios días**, así que un `SCRAPPY_MAX_AGE_HOURS` apretado descarta buena parte de lo que trae Reddit. En la primera prueba real con 48 h se filtraron 19 de 70 candidatos.
 
 **2. Rotación de subreddits.** Sin autenticar, el límite ronda las 10 peticiones por minuto, y en la práctica saltan 429 incluso espaciando 7 segundos. En vez de consultar todos los subreddits en cada ronda, se recorre la lista por tramos con un desplazamiento derivado de la hora actual: con 9 subreddits y 3 por ronda, se cubre la lista entera cada tres ejecuciones, sin necesidad de guardar estado.
 
