@@ -47,6 +47,9 @@ class RankingPenalties(BaseModel):
     too_short: float = Field(default=0.10, ge=0.0)
     no_thumbnail: float = Field(default=0.05, ge=0.0)
     low_comment_ratio: float = Field(default=0.10, ge=0.0)
+    #: Se resta por cada voto en contra acumulado por ese autor, hasta un
+    #: maximo. Es la version suave del veto: en vez de eliminarlo, baja.
+    disliked_author: float = Field(default=0.15, ge=0.0)
 
 
 class RankingConfig(BaseModel):

@@ -156,8 +156,16 @@ class Pipeline:
 
         # Se piden mas candidatos que items a publicar porque algunos se caeran
         # al descargar (privados, borrados, demasiado grandes).
+        # Los votos en contra se releen en cada ronda, no al arrancar: el bot
+        # puede llevar dias en marcha y el boton 👎 debe notarse en la
+        # siguiente publicacion, no en el siguiente reinicio.
+        scorer = Scorer(
+            self._settings,
+            self._sources_config,
+            disliked_authors=await self._state.disliked_authors(),
+        )
         notify("ranking", f"Puntuando {len(fresh)} candidatos…")
-        selected, low_score = self._scorer.select(fresh, limit=target * 3)
+        selected, low_score = scorer.select(fresh, limit=target * 3)
         for _ in low_score:
             report.record(RunOutcome.LOW_SCORE)
 

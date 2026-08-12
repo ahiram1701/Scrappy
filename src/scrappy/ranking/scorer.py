@@ -45,10 +45,24 @@ _AGE_OFFSET_HOURS = 2.0
 class Scorer:
     """Calcula el score de un lote de candidatos."""
 
-    def __init__(self, settings: Settings, sources_config: SourcesConfig) -> None:
+    #: Tope de la penalizacion por votos en contra. Sin el, cuatro pulsaciones
+    #: del boton 👎 dejarian a un autor fuera para siempre, que es lo que hace
+    #: el veto: esto pretende ser la version suave.
+    MAX_DISLIKE_FACTOR = 3
+
+    def __init__(
+        self,
+        settings: Settings,
+        sources_config: SourcesConfig,
+        *,
+        disliked_authors: dict[str, int] | None = None,
+    ) -> None:
         self._settings = settings
         self._sources = sources_config
         self._ranking: RankingConfig = sources_config.ranking
+        #: Autores con votos en contra y cuantos. Lo rellena el pipeline desde
+        #: el estado; vacio equivale a no haber votado nunca.
+        self._disliked = {autor.lower(): votos for autor, votos in (disliked_authors or {}).items()}
 
     # ------------------------------------------------------------------
     # API publica
@@ -176,6 +190,13 @@ class Scorer:
             ratio = candidate.comments / max(candidate.engagement, 1)
             if ratio < self._ranking.min_comment_ratio:
                 applied["low_comment_ratio"] = config.low_comment_ratio
+
+        # Votos en contra desde el boton 👎 de Telegram. Escala con el numero
+        # de votos pero con tope: pasado ese punto lo que toca es vetar.
+        votos = self._disliked.get(candidate.author.lower(), 0)
+        if votos and config.disliked_author:
+            factor = min(votos, self.MAX_DISLIKE_FACTOR)
+            applied["disliked_author"] = config.disliked_author * factor
 
         return applied
 

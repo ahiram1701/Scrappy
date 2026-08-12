@@ -19,18 +19,38 @@ from __future__ import annotations
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-#: Separador de los campos de `callback_data`.
-SEP = ":"
+# Las acciones sobre una publicacion viven en `delivery/keyboards.py`, junto al
+# codigo que las adjunta. Se reexportan aqui para que `callbacks.py` tenga un
+# solo sitio de donde importar.
+from scrappy.delivery.keyboards import (
+    ACCION_BORRAR,
+    ACCION_DISLIKE,
+    ACCION_VETAR,
+    SEP,
+    acciones_de_publicacion,
+)
 
-# Acciones. Cortas a proposito: cada byte cuenta contra el limite de 64.
+# Acciones de los menus. Cortas a proposito: cada byte cuenta contra el
+# limite de 64 de `callback_data`.
 ACCION_FETCH = "f"
 ACCION_FETCH_MENU = "fm"
 ACCION_STATS = "st"
-ACCION_SOURCES = "sr"
-ACCION_BORRAR = "del"
-ACCION_VETAR = "ban"
-ACCION_DISLIKE = "dis"
 ACCION_CANCELAR = "x"
+
+__all__ = [
+    "ACCION_BORRAR",
+    "ACCION_CANCELAR",
+    "ACCION_DISLIKE",
+    "ACCION_FETCH",
+    "ACCION_FETCH_MENU",
+    "ACCION_STATS",
+    "ACCION_VETAR",
+    "SEP",
+    "acciones_de_publicacion",
+    "menu_cantidad",
+    "menu_fetch",
+    "menu_stats",
+]
 
 
 def menu_fetch(fuentes: list[str]) -> InlineKeyboardMarkup:
@@ -70,25 +90,3 @@ def menu_stats() -> InlineKeyboardMarkup:
         for etiqueta, dias in (("Hoy", 1), ("7 dias", 7), ("30 dias", 30), ("Todo", 0))
     ]
     return InlineKeyboardMarkup([botones])
-
-
-def acciones_de_publicacion(source: str, source_id: str) -> InlineKeyboardMarkup | None:
-    """Botones bajo cada meme publicado.
-
-    Devuelve None si el identificador no cabe en el limite de 64 bytes, que es
-    raro pero posible con ids largos: mejor publicar sin botones que que
-    Telegram rechace el mensaje entero.
-    """
-    sufijo = f"{SEP}{source}{SEP}{source_id}"
-    if len(f"{ACCION_BORRAR}{sufijo}".encode()) > 64:
-        return None
-
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🗑 Borrar", callback_data=f"{ACCION_BORRAR}{sufijo}"),
-                InlineKeyboardButton("🚫 Vetar autor", callback_data=f"{ACCION_VETAR}{sufijo}"),
-                InlineKeyboardButton("👎", callback_data=f"{ACCION_DISLIKE}{sufijo}"),
-            ]
-        ]
-    )

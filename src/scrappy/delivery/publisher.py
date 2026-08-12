@@ -21,6 +21,7 @@ from scrappy.config.loader import DeliveryConfig
 from scrappy.core.errors import PublishError
 from scrappy.core.models import EphemeralMedia, MediaKind, PublishedItem, ScoredCandidate
 from scrappy.delivery.captions import build_caption
+from scrappy.delivery.keyboards import acciones_de_publicacion
 from scrappy.delivery.throttle import PublishThrottle
 from scrappy.observability.logging import get_logger
 
@@ -81,6 +82,9 @@ class TelegramPublisher:
             phash=media.phash,
             score=scored.score,
             kind=media.kind,
+            # Se guarda para poder vetarlo desde el boton: el `callback_data`
+            # de Telegram no da para llevar el nombre.
+            author=scored.candidate.author,
             telegram_message_id=message.message_id,
             telegram_file_id=file_id,
         )
@@ -101,6 +105,12 @@ class TelegramPublisher:
             "caption": caption,
             "parse_mode": ParseMode.HTML,
             "disable_notification": self._config.silent_notifications,
+            # Botones de borrar, vetar autor y no me gusta. Puede ser None si
+            # el identificador no cabe en el limite de `callback_data`, en cuyo
+            # caso se publica sin ellos en vez de fallar el envio entero.
+            "reply_markup": acciones_de_publicacion(
+                media.candidate.source, media.candidate.source_id
+            ),
         }
 
         match media.kind:

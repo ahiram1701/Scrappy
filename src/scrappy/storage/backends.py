@@ -47,6 +47,26 @@ _MIGRATIONS: tuple[str, ...] = (
     CREATE INDEX IF NOT EXISTS idx_published_at     ON published(published_at);
     CREATE INDEX IF NOT EXISTS idx_published_source ON published(source);
     """,
+    # v2 -- opiniones desde los botones de Telegram
+    #
+    # `author` se anade a `published` porque el `callback_data` de Telegram no
+    # da para llevarlo (64 bytes) y hace falta para el boton de vetar autor.
+    # Las filas antiguas se quedan con la cadena vacia, que es correcto: de
+    # ellas no se guardo el autor y no se puede inventar.
+    """
+    ALTER TABLE published ADD COLUMN author TEXT NOT NULL DEFAULT '';
+
+    CREATE TABLE IF NOT EXISTS feedback (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        uid        TEXT NOT NULL,
+        source     TEXT NOT NULL,
+        author     TEXT NOT NULL DEFAULT '',
+        kind       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_feedback_author ON feedback(author);
+    CREATE INDEX IF NOT EXISTS idx_feedback_kind   ON feedback(kind);
+    """,
 )
 
 
@@ -77,6 +97,18 @@ class StateBackendProtocol(Protocol):
         ...
 
     async def total_published(self) -> int: ...
+
+    async def find(self, source: str, source_id: str) -> PublishedItem | None:
+        """Recupera un item publicado. Lo usan los botones de Telegram."""
+        ...
+
+    async def record_feedback(self, item: PublishedItem, kind: str) -> None:
+        """Guarda una opinion sobre un item ya publicado."""
+        ...
+
+    async def disliked_authors(self) -> dict[str, int]:
+        """Autores con votos negativos y cuantos, para penalizarlos."""
+        ...
 
 
 class NullStateBackend:
@@ -111,6 +143,15 @@ class NullStateBackend:
     async def total_published(self) -> int:
         return 0
 
+    async def find(self, source: str, source_id: str) -> PublishedItem | None:
+        return None
+
+    async def record_feedback(self, item: PublishedItem, kind: str) -> None:
+        return None
+
+    async def disliked_authors(self) -> dict[str, int]:
+        return {}
+
 
 class MemoryStateBackend:
     """Dedup dentro de una misma ejecucion, sin tocar el disco.
@@ -123,12 +164,14 @@ class MemoryStateBackend:
 
     def __init__(self) -> None:
         self._items: dict[str, PublishedItem] = {}
+        self._feedback: list[tuple[str, str]] = []
 
     async def setup(self) -> None:
         return None
 
     async def close(self) -> None:
         self._items.clear()
+        self._feedback.clear()
 
     async def has_uid(self, uid: str) -> bool:
         return uid in self._items
@@ -152,6 +195,19 @@ class MemoryStateBackend:
 
     async def total_published(self) -> int:
         return len(self._items)
+
+    async def find(self, source: str, source_id: str) -> PublishedItem | None:
+        return self._items.get(f"{source}:{source_id}")
+
+    async def record_feedback(self, item: PublishedItem, kind: str) -> None:
+        self._feedback.append((item.author, kind))
+
+    async def disliked_authors(self) -> dict[str, int]:
+        cuenta: dict[str, int] = {}
+        for autor, kind in self._feedback:
+            if kind == "dislike" and autor:
+                cuenta[autor] = cuenta.get(autor, 0) + 1
+        return cuenta
 
 
 class SqliteStateBackend:
@@ -230,8 +286,8 @@ class SqliteStateBackend:
             """
             INSERT INTO published (
                 uid, source, source_id, permalink, sha256, phash, score, kind,
-                telegram_message_id, telegram_file_id, published_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                author, telegram_message_id, telegram_file_id, published_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(uid) DO UPDATE SET
                 telegram_message_id = excluded.telegram_message_id,
                 telegram_file_id    = excluded.telegram_file_id,
@@ -246,12 +302,50 @@ class SqliteStateBackend:
                 item.phash,
                 item.score,
                 str(item.kind),
+                item.author,
                 item.telegram_message_id,
                 item.telegram_file_id,
                 item.published_at.isoformat(),
             ),
         )
         await db.commit()
+
+    async def find(self, source: str, source_id: str) -> PublishedItem | None:
+        db = self._require_db()
+        async with db.execute(
+            "SELECT * FROM published WHERE uid = ?", (f"{source}:{source_id}",)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return PublishedItem(
+            source=str(row["source"]),
+            source_id=str(row["source_id"]),
+            permalink=str(row["permalink"]),
+            sha256=str(row["sha256"]),
+            phash=row["phash"],
+            score=float(row["score"] or 0),
+            author=str(row["author"] or ""),
+            telegram_message_id=row["telegram_message_id"],
+            telegram_file_id=row["telegram_file_id"],
+        )
+
+    async def record_feedback(self, item: PublishedItem, kind: str) -> None:
+        db = self._require_db()
+        await db.execute(
+            "INSERT INTO feedback (uid, source, author, kind, created_at) VALUES (?, ?, ?, ?, ?)",
+            (item.uid, item.source, item.author, kind, utcnow().isoformat()),
+        )
+        await db.commit()
+
+    async def disliked_authors(self) -> dict[str, int]:
+        db = self._require_db()
+        async with db.execute(
+            "SELECT author, COUNT(*) AS n FROM feedback "
+            "WHERE kind = 'dislike' AND author != '' GROUP BY author"
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return {str(row["author"]): int(row["n"]) for row in rows}
 
     async def stats(self, *, since: datetime | None = None) -> dict[str, int]:
         db = self._require_db()

@@ -198,6 +198,9 @@ class PublishedItem(BaseModel):
     phash: str | None = None
     score: float = 0.0
     kind: MediaKind = MediaKind.VIDEO
+    #: Se guarda para poder vetar al autor desde el boton de Telegram: el
+    #: `callback_data` no da para llevarlo, asi que hay que poder buscarlo.
+    author: str = ""
     telegram_message_id: int | None = None
     telegram_file_id: str | None = None
     published_at: datetime = Field(default_factory=utcnow)
