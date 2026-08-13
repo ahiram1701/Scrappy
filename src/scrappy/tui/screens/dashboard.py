@@ -108,6 +108,14 @@ class DashboardScreen(Screen[None]):
         self._refresh_autoarranque()
         self._refresh_config(scrappy)
 
+    def sincronizar(self) -> None:
+        """Tras recargar. Aqui todo es local, asi que se refresca entero.
+
+        Encolado, no en paralelo: mientras corre el manejador que pidio la
+        recarga, los widgets estan a mitad de cambiar.
+        """
+        self.app.call_later(self.refresh_data)
+
     def _refresh_autoarranque(self) -> None:
         estado = self.tui.autoarranque.status()
         lineas = [estado.detalle]

@@ -21,6 +21,7 @@ _AYUDA = """\
   s          Configuracion: editar .env y sources.yaml
   ?          Esta ayuda
   r          Refrescar la pantalla actual
+  R          Recargar la configuracion sin reiniciar (mayuscula)
   q          Salir
 
 [b]En Candidatos[/b]
@@ -34,6 +35,12 @@ _AYUDA = """\
   Ctrl+R     Descartar los cambios y releer los ficheros
   Tab        Moverse entre pestanas y campos
 
+[b]Cuando corre Scrappy[/b]
+  Solo mientras haya un proceso suyo vivo. Con esta ventana abierta y el
+  scheduler arrancado, publica; al cerrarla, deja de publicar.
+  Para que arranque solo al iniciar sesion, el Panel tiene un interruptor
+  de arranque automatico.
+
 [b]Cosas que conviene saber[/b]
   · El contenido descargado nunca se queda en la maquina: se publica en
     Telegram y se borra en el mismo ciclo.
@@ -41,6 +48,9 @@ _AYUDA = """\
     documentacion de cada valor.
   · Los secretos salen enmascarados. El interruptor «Mostrar secretos» los
     revela cuando hace falta comprobarlos.
+  · Una clave que no este en el .env no queda desactivada: usa su valor por
+    defecto, y la Configuracion lo muestra tal cual es.
+  · Las horas se muestran en tu zona horaria. Lo que se guarda va en UTC.
   · Si algo no arranca, el detalle esta en data/scrappy-tui.log, y
     `scrappy doctor` explica que arreglar.
 

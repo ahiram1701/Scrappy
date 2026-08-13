@@ -66,9 +66,7 @@ class CandidatesScreen(Screen[None]):
     def on_mount(self) -> None:
         tabla = self.query_one("#tabla-candidatos", DataTable)
         tabla.add_columns("score", "fuente", "veredicto", "engagement", "titulo")
-
-        if not self.tui.can_publish:
-            self.query_one("#publicar", Button).disabled = True
+        self.query_one("#publicar", Button).disabled = not self.tui.can_publish
 
         self.query_one("#barra-progreso", Static).update(
             "Pulsa «Explorar» para ver que publicaria ahora mismo. No descarga nada."
@@ -77,6 +75,24 @@ class CandidatesScreen(Screen[None]):
     async def refresh_data(self) -> None:
         """La tecla global `r` relanza la exploracion."""
         self.action_explorar()
+
+    def sincronizar(self) -> None:
+        """Pone al dia lo que depende de la configuracion, sin tocar la red.
+
+        Lo llama la recarga en caliente. Explorar de nuevo seria lo mas exacto,
+        pero son quince segundos de peticiones a media docena de plataformas
+        que nadie ha pedido: recargar la configuracion no es lo mismo que
+        querer buscar contenido.
+        """
+        self.query_one("#publicar", Button).disabled = not self.tui.can_publish
+
+        if self._filas:
+            # Los candidatos de la tabla se rankearon con los ajustes viejos.
+            # Dejarlos sin mas invitaria a leerlos como si valieran.
+            self.query_one("#barra-progreso", Static).update(
+                "Configuracion recargada. Lo de la tabla se calculo con la "
+                "anterior: vuelve a explorar para verlo con la nueva."
+            )
 
     # ------------------------------------------------------------------
     # Exploracion

@@ -205,9 +205,20 @@ class ScrappyTUI(App[None]):
         if corriendo:
             scheduler.start()
 
-        await self.action_refresh_data(silencioso=True)
+        self._sincronizar_pantalla()
         log.info("tui_recargada", scheduler=corriendo, timezone=str(settings.tzinfo))
         return True
+
+    def _sincronizar_pantalla(self) -> None:
+        """Pone al dia la pantalla actual tras recargar.
+
+        Se pide `sincronizar()` y no `refresh_data()` a proposito: en
+        Candidatos, refrescar dispara el pipeline entero contra la red, y
+        recargar la configuracion no es lo mismo que querer buscar contenido.
+        """
+        sincronizar = getattr(self.screen, "sincronizar", None)
+        if sincronizar is not None:
+            sincronizar()
 
     async def _ofrecer_asistente(self, settings: Settings) -> None:
         """Abre el asistente solo si hay algo que impide publicar.

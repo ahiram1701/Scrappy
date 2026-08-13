@@ -302,6 +302,19 @@ class SettingsScreen(Screen[None]):
         await self.refresh_data()
         self.tui.set_status("Cambios descartados")
 
+    def sincronizar(self) -> None:
+        """Tras una recarga en caliente: releer los ficheros y repintar.
+
+        Es barato -son dos ficheros de texto- y necesario: los ajustes que se
+        acaban de aplicar tienen que verse reflejados en el formulario.
+
+        Se encola con `call_later` y no se lanza como worker: reconstruir las
+        pestanas mientras aun corre el manejador que pidio la recarga las deja
+        a medias, y el formulario revienta al buscar una pestana que ya no
+        esta. Encolado, se reconstruye cuando el manejador ha terminado.
+        """
+        self.app.call_later(self.refresh_data)
+
     async def action_guardar(self) -> None:
         """Vuelca el formulario y guarda los dos ficheros.
 
@@ -351,9 +364,9 @@ class SettingsScreen(Screen[None]):
         # Los ajustes del `.env` se leen una sola vez, al construir la
         # aplicacion, asi que guardar no basta. Antes esto decia «reinicia
         # Scrappy»; ahora se recarga aqui mismo, que es lo que se queria hacer.
+        # `recargar()` ya repinta esta pantalla por su cuenta, via `sincronizar`.
         if await self.tui.recargar():
             self.notify("Guardado y aplicado. No hace falta reiniciar.")
-            await self.refresh_data()
 
     def _volcar(self) -> None:
         """Lleva lo escrito en los widgets a los editores.
