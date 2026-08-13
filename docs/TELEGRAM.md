@@ -265,7 +265,7 @@ Cada meme publicado llega con tres botones. Son la parte con la que más se inte
 | Botón | Qué hace exactamente | ¿Se puede deshacer? |
 |---|---|---|
 | **🗑 Borrar** | Quita el mensaje del canal. **No** lo borra del historial de deduplicación, a propósito: si lo borrase, ese mismo meme volvería a colarse en la siguiente ronda | El mensaje no se recupera. Telegram además solo permite borrar lo publicado hace **menos de 48 horas**; pasado ese plazo el botón responde diciéndolo |
-| **🚫 Vetar autor** | Escribe el autor en `filters.blocked_authors` de `sources.yaml`. Se guarda **en el fichero**, no solo en memoria, así que sobrevive a un reinicio. Es permanente y absoluto: ese autor no vuelve a aparecer | Sí: quitándolo de esa lista, desde la pestaña **Filtros** de la TUI o editando el YAML |
+| **🚫 Vetar autor** | Escribe el autor en `filters.blocked_authors` de `sources.yaml`. Se guarda **en el fichero**, no solo en memoria, así que sobrevive a un reinicio, y surte efecto **en la siguiente ronda** sin reiniciar nada. Es permanente y absoluto: ese autor no vuelve a aparecer | Sí: quitándolo de esa lista, desde la pestaña **Filtros** de la TUI o editando el YAML |
 | **👎** | Penaliza a ese autor en el ranking, de forma **acumulativa y con tope**. Es la versión suave del veto: no lo elimina, hace que le cueste más entrar. Responde con cuántos votos lleva acumulados | Sí, pero hoy solo editando la base de datos (`data/scrappy.db`, tabla `feedback`) |
 
 **Los tres registran su decisión** en el historial, de modo que el ranking aprende de lo que apruebas y lo que no. Ninguno vuelve a descargar nada.

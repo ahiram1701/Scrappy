@@ -123,9 +123,19 @@ async def test_lo_dice_en_la_barra_de_estado(tui_settings: Settings) -> None:
 # Candidatos
 # ---------------------------------------------------------------------------
 class _PipelineFalso:
-    """Sustituye al pipeline real para no depender de la red en los tests."""
+    """Sustituye al pipeline real para no depender de la red en los tests.
 
-    def __init__(self) -> None:
+    Lleva `sources_config` porque el pipeline es quien guarda el catalogo:
+    `ScrappyApp` delega en el en vez de tener una copia propia, para que no
+    puedan discrepar.
+    """
+
+    def __init__(self, sources_config: Any = None) -> None:
+        from scrappy.config.loader import load_sources_config
+
+        self.sources_config = sources_config or load_sources_config(
+            Path("config/sources.example.yaml")
+        )
         self.last_dry_run = [
             DryRunRow(make_candidate(source_id="a", engagement=9000), 0.91, "SELECCIONADO"),
             DryRunRow(make_candidate(source_id="b", engagement=120), 0.22, "nota baja"),

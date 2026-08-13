@@ -155,7 +155,7 @@ Para que persista, reconstruye la imagen.
 
 ## Ajustes en caliente
 
-Estos surten efecto sin reiniciar, porque `sources.yaml` se lee en cada ejecución:
+Estos surten efecto sin reiniciar, porque `sources.yaml` se **relee del disco al empezar cada ronda**:
 
 - Añadir o quitar subreddits, hashtags o cuentas
 - Cambiar pesos, penalizaciones y `min_score`

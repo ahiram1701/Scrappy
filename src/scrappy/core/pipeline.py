@@ -21,9 +21,10 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from scrappy.config.loader import SourcesConfig
+from scrappy.config.loader import SourcesConfig, load_sources_config
 from scrappy.config.settings import Settings
 from scrappy.core.errors import (
+    ConfigError,
     DuplicateItemError,
     ItemError,
     RateLimitedError,
@@ -111,6 +112,53 @@ class Pipeline:
         self.last_dry_run: list[DryRunRow] = []
 
     # ------------------------------------------------------------------
+    # Catalogo
+    # ------------------------------------------------------------------
+    @property
+    def sources_config(self) -> SourcesConfig:
+        return self._sources_config
+
+    @sources_config.setter
+    def sources_config(self, config: SourcesConfig) -> None:
+        """Cambia el catalogo y reconstruye lo que depende de el.
+
+        El filtro se construia una sola vez, al crear el pipeline, asi que
+        cambiar el catalogo no lo tocaba. El boton «Vetar autor» escribia el
+        veto en el fichero, respondia «No volvera a aparecer» y el autor seguia
+        pasando el filtro hasta el siguiente reinicio.
+
+        El scorer se rehace ademas en cada ronda para releer los votos en
+        contra, asi que el 👎 nunca tuvo ese problema. Esta es la otra mitad.
+        """
+        self._sources_config = config
+        self._filter = CandidateFilter(self._settings, config.filters)
+
+    def _releer_catalogo(self) -> None:
+        """Relee `sources.yaml` del disco antes de cada ronda.
+
+        Es lo que hace cierto que los cambios del catalogo se apliquen sin
+        reiniciar: tanto los del boton de vetar como los de editar el fichero
+        a mano mientras el bot corre.
+
+        Un YAML a medio editar no puede parar las publicaciones, asi que si no
+        se puede leer se avisa y se sigue con el anterior, que es valido por
+        definicion -se cargo bien en su momento-.
+        """
+        try:
+            config = load_sources_config(self._settings.sources_config_path)
+        except ConfigError as exc:
+            log.warning(
+                "catalogo_no_releido",
+                error=str(exc),
+                detail="se sigue con el ultimo valido; arreglalo y se aplicara en la proxima ronda",
+            )
+            return
+
+        if config != self._sources_config:
+            self.sources_config = config
+            log.info("catalogo_releido", path=str(self._settings.sources_config_path))
+
+    # ------------------------------------------------------------------
     # Ejecucion
     # ------------------------------------------------------------------
     async def run(
@@ -135,6 +183,10 @@ class Pipeline:
         report = RunReport(dry_run=dry_run)
         target = limit if limit is not None else self._settings.items_per_run
         notify = _make_notifier(on_progress)
+
+        # Antes de nada: el catalogo puede haber cambiado desde la ronda
+        # anterior, y el bot puede llevar dias en marcha.
+        self._releer_catalogo()
 
         notify("discovering", f"Consultando {len(self._adapters)} fuentes…")
         candidates = await self._discover(report)

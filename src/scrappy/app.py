@@ -94,13 +94,28 @@ class ScrappyApp:
         bot: Bot | None,
     ) -> None:
         self.settings = settings
-        self.sources_config = sources_config
         self.client = client
         self.state = state
         self.adapters = adapters
         self.pipeline = pipeline
         self.bot = bot
         self.paused = False
+        self.sources_config = sources_config
+
+    @property
+    def sources_config(self) -> SourcesConfig:
+        """El catalogo vigente. Lo guarda el pipeline, que es quien lo usa.
+
+        Delegar en vez de tener una copia propia no es un detalle: cuando eran
+        dos atributos distintos, el boton «Vetar autor» actualizaba este y no
+        el del pipeline, asi que el veto se veia en `/config` y no surtia
+        ningun efecto sobre lo que se publicaba.
+        """
+        return self.pipeline.sources_config
+
+    @sources_config.setter
+    def sources_config(self, config: SourcesConfig) -> None:
+        self.pipeline.sources_config = config
 
     # ------------------------------------------------------------------
     # Construccion
