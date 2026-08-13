@@ -74,12 +74,30 @@ class FakeQuery:
 
 
 class FakeContext:
-    def __init__(self, app: Any, admins: set[int] | None = None, args: list[str] | None = None):
+    def __init__(
+        self,
+        app: Any,
+        admins: set[int] | None = None,
+        args: list[str] | None = None,
+        scheduler: Any = None,
+    ):
         self.bot_data = {
             "scrappy_app": app,
             "admin_ids": frozenset(admins if admins is not None else {1412545148}),
+            # None cuando quien arranco el bot no lo registro, que es lo que
+            # pasa con `scrappy run --no-bot` y en la mayoria de estos tests.
+            "scheduler": scheduler,
         }
         self.args = args or []
+
+
+class FakeScheduler:
+    """Las tres cosas que el bot pregunta del scheduler."""
+
+    def __init__(self, *, running: bool = True, enabled: bool = True, proxima: str | None = None):
+        self.running = running
+        self.enabled = enabled
+        self.next_run_at = proxima if proxima is not None else "hoy a las 19:52"
 
 
 class FakeState:
@@ -102,6 +120,7 @@ class FakeApp:
             SourceStatus("tiktok", True, False, "falta el flag de ToS"),
         ]
         self.runs: list[dict[str, Any]] = []
+        self.paused = False
 
     async def source_statuses(self) -> list[SourceStatus]:
         return self._fuentes
@@ -111,6 +130,18 @@ class FakeApp:
         report = RunReport()
         report.discovered = 5
         return report
+
+    async def health(self) -> Any:
+        from scrappy.app import HealthReport
+
+        return HealthReport(
+            ffmpeg=True,
+            state_backend="memory",
+            state_items=42,
+            telegram_configured=True,
+            active_workspaces=0,
+            sources=self._fuentes,
+        )
 
 
 @pytest.fixture
@@ -164,10 +195,103 @@ async def test_start_dice_cada_cuanto_publicara(settings: Settings) -> None:
     mensaje = FakeMessage()
     app = FakeApp(settings.model_copy(update={"schedule_enabled": True}))
 
-    await handlers.cmd_start(FakeUpdate(mensaje), FakeContext(app))  # type: ignore[arg-type]
+    await handlers.cmd_start(
+        FakeUpdate(mensaje),
+        FakeContext(app, scheduler=FakeScheduler()),  # type: ignore[arg-type]
+    )
 
     assert "cada" in mensaje.editados[0]
     assert "minutos" in mensaje.editados[0]
+
+
+# ---------------------------------------------------------------------------
+# Cuando es la proxima ronda
+# ---------------------------------------------------------------------------
+async def test_start_dice_cuando_es_la_proxima_ronda(settings: Settings) -> None:
+    """Con el arranque automatico esto corre sin ventana: Telegram es el unico
+    sitio donde se puede preguntar."""
+    mensaje = FakeMessage()
+    app = FakeApp(settings.model_copy(update={"schedule_enabled": True}))
+
+    await handlers.cmd_start(
+        FakeUpdate(mensaje),
+        FakeContext(app, scheduler=FakeScheduler(proxima="hoy a las 19:52")),  # type: ignore[arg-type]
+    )
+
+    assert "Proxima ronda" in mensaje.editados[0]
+    assert "hoy a las 19:52" in mensaje.editados[0]
+
+
+async def test_start_avisa_si_no_hay_rondas_programadas(settings: Settings) -> None:
+    """Habilitado en la configuracion pero sin arrancar: hay que decirlo."""
+    mensaje = FakeMessage()
+    app = FakeApp(settings.model_copy(update={"schedule_enabled": True}))
+
+    await handlers.cmd_start(
+        FakeUpdate(mensaje),
+        FakeContext(app, scheduler=FakeScheduler(running=False)),  # type: ignore[arg-type]
+    )
+
+    assert "no hay rondas programadas" in mensaje.editados[0]
+
+
+async def test_start_dice_si_esta_en_pausa(settings: Settings) -> None:
+    mensaje = FakeMessage()
+    app = FakeApp(settings.model_copy(update={"schedule_enabled": True}))
+    app.paused = True
+
+    await handlers.cmd_start(
+        FakeUpdate(mensaje),
+        FakeContext(app, scheduler=FakeScheduler()),  # type: ignore[arg-type]
+    )
+
+    texto = mensaje.editados[0]
+    assert "En pausa" in texto
+    assert "/resume" in texto
+    # Y no promete una hora que no va a cumplir.
+    assert "Proxima ronda" not in texto
+
+
+async def test_sin_scheduler_registrado_no_se_inventa_una_hora(settings: Settings) -> None:
+    """`scrappy run --no-bot` no registra ninguno, y los tests tampoco.
+
+    Prometer una hora que no se puede consultar seria peor que no darla.
+    """
+    mensaje = FakeMessage()
+    app = FakeApp(settings.model_copy(update={"schedule_enabled": True}))
+
+    await handlers.cmd_start(FakeUpdate(mensaje), FakeContext(app))  # type: ignore[arg-type]
+
+    texto = mensaje.editados[0]
+    assert "Proxima ronda" not in texto
+    assert "cada" in texto  # la cadencia si se sabe
+
+
+async def test_start_no_menciona_rondas_si_esta_desactivado(settings: Settings) -> None:
+    mensaje = FakeMessage()
+    app = FakeApp(settings.model_copy(update={"schedule_enabled": False}))
+
+    await handlers.cmd_start(
+        FakeUpdate(mensaje),
+        FakeContext(app, scheduler=FakeScheduler(enabled=False, running=False)),  # type: ignore[arg-type]
+    )
+
+    texto = mensaje.editados[0]
+    assert "desactivado" in texto
+    assert "Proxima ronda" not in texto
+
+
+async def test_health_tambien_dice_la_proxima_ronda(settings: Settings) -> None:
+    """El otro sitio natural para preguntarlo."""
+    mensaje = FakeMessage()
+    app = FakeApp(settings.model_copy(update={"schedule_enabled": True}))
+
+    await handlers.cmd_health(
+        FakeUpdate(mensaje),
+        FakeContext(app, scheduler=FakeScheduler(proxima="manana a las 05:00")),  # type: ignore[arg-type]
+    )
+
+    assert "manana a las 05:00" in mensaje.enviados[0]
 
 
 async def test_start_incluye_los_problemas_con_su_arreglo(tmp_path: Any) -> None:

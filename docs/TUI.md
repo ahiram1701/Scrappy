@@ -22,7 +22,14 @@ Y cuatro teclas globales: `?` abre la ayuda con todos los atajos, `r` refresca l
 
 Lo mismo que `scrappy health` y `scrappy sources`, pero de un vistazo: ffmpeg, backend de estado, Telegram, workspaces activos, la tabla de las nueve fuentes con lo que le falta a cada una, y cuántos items se han publicado.
 
-**Scheduler.** Si la configuración lo tiene activado, **arranca solo al abrir la TUI**, igual que hace `scrappy run`. La hora de la próxima ronda va en tu zona horaria y en lenguaje corriente: «próxima ronda: hoy a las 21:20», no un ISO en UTC.
+**Scheduler.** Es la primera sección después de Sistema, porque «¿cuándo publica?» es lo que más se consulta. Si la configuración lo tiene activado, **arranca solo al abrir la TUI**, igual que hace `scrappy run`:
+
+```
+en marcha: 5 items cada 180 min
+proxima ronda: hoy a las 19:52
+```
+
+La hora va en tu zona horaria y en lenguaje corriente, no en un ISO en UTC. Desde Telegram la misma información está en `/start` y `/health`, que es donde hay que mirarla cuando Scrappy corre de fondo y no hay ventana.
 
 Los botones **Arrancar**, **Pausar** y **Reanudar** equivalen a `/pause` y `/resume` del bot, y solo están habilitados cuando pueden hacer algo.
 

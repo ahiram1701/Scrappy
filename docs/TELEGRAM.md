@@ -37,6 +37,7 @@ Por revisar
   Instalalo con: winget install Gyan.FFmpeg
 
 Publicare 5 items cada 180 minutos, en horario de America/Mexico_City.
+Proxima ronda: hoy a las 19:52.
 
 Escribe / para ver todo lo que puedo hacer.
 ```
@@ -51,6 +52,18 @@ Qué mirar, en orden:
 | **Fuentes listas** | Cuántas plataformas están activas *y* configuradas. Si sale «Ninguna fuente lista», nada va a publicarse |
 | **Por revisar** | Los problemas detectados, con la orden exacta para arreglarlos. Es el mismo diagnóstico de `scrappy doctor` |
 | **Publicaré N cada M** | La cadencia, y **en qué zona horaria**. Si tus publicaciones aparecen de madrugada, esta línea explica por qué |
+| **Próxima ronda** | Cuándo toca la siguiente, en tu hora. Es el único sitio donde se puede consultar si Scrappy corre de fondo, sin ventana |
+
+Esa última línea cambia según el caso, y cada variante quiere decir algo distinto:
+
+| Lo que dice | Qué significa |
+|---|---|
+| `Proxima ronda: hoy a las 19:52` | Todo en orden |
+| `⏸ En pausa. Usa /resume para reanudar.` | Alguien hizo `/pause`. No se promete una hora que no se va a cumplir |
+| `⚠️ Ahora mismo no hay rondas programadas.` | El scheduler está habilitado pero no arrancó. Si corre desde la TUI, mira su Panel |
+| `El scheduler esta desactivado…` | `SCRAPPY_SCHEDULE_ENABLED=false`. Solo publicará con `/fetch` |
+
+Si el bot lo arrancó algo que no registró el scheduler —`scrappy run --no-bot` no llega a tener bot, pero un montaje propio sí podría—, se da la cadencia y **no** la hora: prometer una hora que no se puede consultar sería peor que no darla.
 
 Si el bot no contesta a `/start`, el problema es anterior al bot: mira [Cuando algo falla](#cuando-algo-falla).
 
@@ -157,7 +170,7 @@ Es la forma de comprobar que un cambio en el `.env` llegó de verdad al proceso:
 
 ---
 
-### `/health` — diagnóstico técnico
+### `/health` — diagnóstico técnico, y cuándo es la próxima ronda
 
 ```
 ffmpeg: OK
@@ -168,6 +181,9 @@ fuentes:
   - reddit: lista (9 subreddits, 3 por ronda (feeds RSS, orden `hot`))
   - lemmy: lista (3 comunidades en https://lemmy.world, sin credenciales)
   - bluesky: lista (3 consultas, ultimas 24h, sin credenciales)
+
+Publicare 5 items cada 180 minutos, en horario de America/Mexico_City.
+Proxima ronda: hoy a las 19:52.
 ```
 
 **`workspaces activos: 0`** es la línea importante: confirma la promesa central del proyecto, que no queda contenido en el disco. Un número distinto de cero durante una ronda es normal —hay descargas en curso—; fuera de una ronda, no.

@@ -37,9 +37,10 @@ class DashboardScreen(Screen[None]):
             with Vertical(classes="seccion"):
                 yield Static("Sistema", classes="seccion-titulo")
                 yield Static(id="salud")
-            with Vertical(classes="seccion"):
-                yield Static("Fuentes", classes="seccion-titulo")
-                yield DataTable(id="tabla-fuentes", cursor_type="row")
+            # El scheduler va antes que las fuentes a proposito: «cuando
+            # publica?» se consulta a diario y la tabla de nueve fuentes es
+            # material de referencia. Con la tabla delante, en una terminal de
+            # 24 filas el scheduler caia por debajo del pliegue.
             with Vertical(classes="seccion"):
                 yield Static("Scheduler", classes="seccion-titulo")
                 yield Static(id="estado-scheduler")
@@ -47,6 +48,9 @@ class DashboardScreen(Screen[None]):
                     yield Button("Arrancar", id="arrancar", variant="success")
                     yield Button("Pausar", id="pausar", variant="warning")
                     yield Button("Reanudar", id="reanudar")
+            with Vertical(classes="seccion"):
+                yield Static("Fuentes", classes="seccion-titulo")
+                yield DataTable(id="tabla-fuentes", cursor_type="row")
             with Vertical(classes="seccion"):
                 yield Static("Publicado", classes="seccion-titulo")
                 yield Static(id="stats")

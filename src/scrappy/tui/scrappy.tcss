@@ -19,10 +19,18 @@ Screen {
 /* --------------------------------------------------------------------------
  * Panel
  * ------------------------------------------------------------------------ */
+/* `height: auto` y no el `1fr` que trae `Vertical` por defecto: con 1fr, las
+ * seis secciones del panel se reparten el alto disponible y cada una recorta
+ * lo que no cabe. En una terminal de 30 filas eso dejaba «proxima ronda»
+ * fuera de pantalla, sin ninguna senal de que faltara algo.
+ *
+ * Con auto, cada seccion ocupa lo que necesita y es el VerticalScroll de
+ * fuera el que hace scroll, que es para lo que esta. */
 .seccion {
     border: round $primary;
     padding: 0 1;
     margin: 0 1 1 1;
+    height: auto;
 }
 
 .seccion-titulo {

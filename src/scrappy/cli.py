@@ -191,7 +191,10 @@ def run(
             application = (
                 ApplicationBuilder().token(settings.telegram_bot_token.get_secret_value()).build()
             )
-            register_handlers(application, app)
+            # El scheduler va al bot para que pueda responder cuando toca la
+            # proxima ronda. Con el arranque automatico esto corre sin ventana,
+            # asi que Telegram es el unico sitio donde se puede preguntar.
+            register_handlers(application, app, scheduler)
 
             async with application:
                 await application.start()

@@ -218,6 +218,33 @@ async def test_desactivarlo_y_recargar_lo_para(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Que se VEA, no solo que este
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("filas", [24, 30, 40], ids=lambda n: f"{n}-filas")
+async def test_la_hora_de_la_proxima_ronda_cabe_en_pantalla(tmp_path: Path, filas: int) -> None:
+    """`render()` devuelve el texto entero aunque en pantalla este recortado.
+
+    Las secciones del panel heredaban el `height: 1fr` de `Vertical`, asi que
+    se repartian el alto disponible y cada una cortaba lo que no cabia. Al
+    pasar el estado del scheduler a dos lineas, la segunda -justo la de la
+    hora- desaparecio sin ninguna senal de que faltara algo.
+
+    Por eso esto mira el render de la pantalla y no el contenido del widget:
+    es la unica forma de detectar un recorte.
+    """
+    env_path = _env(tmp_path, "SCRAPPY_SCHEDULE_ENABLED=true\n")
+
+    async with ScrappyTUI(env_path=env_path, show_wizard=False).run_test(
+        size=(100, filas)
+    ) as pilot:
+        await pilot.pause()
+        visible = pilot.app.export_screenshot().replace("&#160;", " ")
+
+    assert "en marcha:" in visible
+    assert "proxima ronda" in visible, f"recortado en una terminal de {filas} filas"
+
+
+# ---------------------------------------------------------------------------
 # Coherencia entre las dos pantallas
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("activo", [True, False], ids=["activo", "desactivado"])

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 from datetime import timedelta
+from typing import Protocol
 
 from telegram import Update
 from telegram.constants import ParseMode
@@ -44,12 +45,61 @@ El contenido descargado nunca se guarda en la maquina: se publica aqui y se
 borra. Telegram es el unico archivo."""
 
 
+class SchedulerProtocol(Protocol):
+    """Lo unico que el bot necesita saber del scheduler.
+
+    Un protocolo y no `PipelineScheduler` para no atar los handlers a
+    APScheduler: aqui solo se lee, y asi los tests pueden pasar cualquier cosa
+    que responda a estas tres preguntas.
+    """
+
+    @property
+    def running(self) -> bool: ...
+
+    @property
+    def enabled(self) -> bool: ...
+
+    @property
+    def next_run_at(self) -> str | None: ...
+
+
 def _app(context: ContextTypes.DEFAULT_TYPE) -> ScrappyApp:
     """Recupera la aplicacion del `bot_data` donde la dejo el arranque."""
     app = context.bot_data.get("scrappy_app")
     if app is None:  # pragma: no cover - error de programacion
         raise RuntimeError("ScrappyApp no esta en bot_data")
     return app  # type: ignore[no-any-return]
+
+
+def _scheduler(context: ContextTypes.DEFAULT_TYPE) -> SchedulerProtocol | None:
+    """El scheduler, si quien arranco el bot lo registro."""
+    return context.bot_data.get("scheduler")
+
+
+def _linea_scheduler(app: ScrappyApp, scheduler: SchedulerProtocol | None) -> str:
+    """Que va a publicar y cuando, en una o dos lineas.
+
+    Lo comparten `/start` y `/health`. Sin scheduler registrado se dice la
+    cadencia y no la hora: prometer una hora que no se puede consultar seria
+    peor que no darla.
+    """
+    if not app.settings.schedule_enabled:
+        return "El scheduler esta desactivado: solo publicare con /fetch."
+
+    cadencia = (
+        f"Publicare {app.settings.items_per_run} items cada "
+        f"{app.settings.schedule_interval_minutes} minutos, "
+        f"en horario de {html.escape(str(app.settings.tzinfo))}."
+    )
+
+    if scheduler is None or not scheduler.running:
+        return f"{cadencia}\n⚠️ Ahora mismo no hay rondas programadas."
+
+    if app.paused:
+        return f"{cadencia}\n⏸ En pausa. Usa /resume para reanudar."
+
+    proxima = scheduler.next_run_at
+    return f"{cadencia}\nProxima ronda: <b>{html.escape(proxima)}</b>." if proxima else cadencia
 
 
 # ---------------------------------------------------------------------------
@@ -103,16 +153,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             if check.fix:
                 lineas.append(f"  <i>{html.escape(check.fix)}</i>")
 
-    if app.settings.schedule_enabled:
-        lineas.append(
-            f"\nPublicare {app.settings.items_per_run} items cada "
-            f"{app.settings.schedule_interval_minutes} minutos, "
-            # La zona va aqui porque «me publico de madrugada» es la queja
-            # tipica, y verla desde el primer mensaje la explica sin buscar.
-            f"en horario de {html.escape(str(app.settings.tzinfo))}."
-        )
-    else:
-        lineas.append("\nEl scheduler esta desactivado: solo publicare con /fetch.")
+    # Cadencia, zona horaria y la hora de la proxima ronda. La zona va aqui
+    # porque «me publico de madrugada» es la queja tipica, y verla desde el
+    # primer mensaje la explica sin tener que buscarla.
+    lineas.append(f"\n{_linea_scheduler(app, _scheduler(context))}")
 
     lineas.append("\nEscribe / para ver todo lo que puedo hacer.")
 
@@ -270,10 +314,13 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     message = update.effective_message
     if message is None:
         return
-    report = await _app(context).health()
+    app = _app(context)
+    report = await app.health()
     header = "Todo correcto" if report.ok else "Hay algo que revisar"
     await message.reply_text(
-        f"<b>{header}</b>\n<pre>{html.escape(report.render())}</pre>",
+        f"<b>{header}</b>\n<pre>{html.escape(report.render())}</pre>\n"
+        # Fuera del <pre>: lleva negrita y no es salida de diagnostico.
+        f"{_linea_scheduler(app, _scheduler(context))}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -306,10 +353,23 @@ async def on_error(_update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 # Registro
 # ---------------------------------------------------------------------------
-def register_handlers(application: Application, app: ScrappyApp) -> None:  # type: ignore[type-arg]
-    """Conecta los comandos y deja `ScrappyApp` accesible en `bot_data`."""
+def register_handlers(
+    application: Application,  # type: ignore[type-arg]
+    app: ScrappyApp,
+    scheduler: SchedulerProtocol | None = None,
+) -> None:
+    """Conecta los comandos y deja `ScrappyApp` accesible en `bot_data`.
+
+    Args:
+        scheduler: opcional, para poder responder «cuando es la proxima
+            ronda». Sin el, el bot no tiene forma de saberlo: los ajustes
+            dicen cada cuanto, pero la hora concreta solo la sabe quien tiene
+            el job programado. `scrappy run --no-bot` no pasa por aqui, y en
+            los tests no siempre hay uno.
+    """
     application.bot_data["scrappy_app"] = app
     application.bot_data["admin_ids"] = app.settings.admin_ids
+    application.bot_data["scheduler"] = scheduler
 
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
