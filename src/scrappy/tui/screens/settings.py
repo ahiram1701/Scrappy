@@ -166,8 +166,26 @@ class SettingsScreen(Screen[None]):
             for titulo, campos_yaml in _YAML_TABS:
                 await tabs.add_pane(self._panel_yaml(titulo, campos_yaml))
 
-            for fuente in self._yaml.source_names():
-                await tabs.add_pane(self._panel_fuente(fuente))
+        for fuente in self._fuentes_a_mostrar():
+            await tabs.add_pane(self._panel_fuente(fuente))
+
+    def _fuentes_a_mostrar(self) -> list[str]:
+        """Todas las fuentes que Scrappy conoce, esten o no en el YAML.
+
+        Antes se listaban solo las secciones de `sources.yaml`, asi que un
+        `sources.yaml` creado antes de que existiera una fuente la dejaba sin
+        pestana: no se podia activar ni configurar, y nada explicaba por que
+        faltaba. Es el mismo problema que tenian las claves ausentes del
+        `.env`, en el otro fichero.
+
+        Ahora salen todas y las que no tienen seccion lo dicen.
+        """
+        conocidas = list(SOURCE_ENABLED_KEY)
+        if self._yaml is None:
+            return conocidas
+        # Por si el YAML trae alguna que este codigo no conoce todavia.
+        extra = [f for f in self._yaml.source_names() if f not in SOURCE_ENABLED_KEY]
+        return conocidas + extra
 
     # ------------------------------------------------------------------
     # Construccion de paneles
@@ -204,7 +222,14 @@ class SettingsScreen(Screen[None]):
                 )
             )
 
-        hijos += [self._campo_yaml(campo) for campo in fields_for_source(fuente)]
+        if self._yaml is not None and fuente in self._yaml.source_names():
+            hijos += [self._campo_yaml(campo) for campo in fields_for_source(fuente)]
+        else:
+            # Sin seccion en el YAML no se pintan sus campos: el editor no crea
+            # claves a proposito, asi que serian widgets que no guardan nada.
+            # Mejor decir que falta y como anadirlo.
+            hijos.append(Static(_falta_seccion(fuente), classes="ayuda"))
+
         return TabPane(fuente, VerticalScroll(*hijos), id=f"tab-src-{fuente}")
 
     # ------------------------------------------------------------------
@@ -420,6 +445,23 @@ def _como_texto(valor: Any) -> str:
 
 def _slug(titulo: str) -> str:
     return titulo.lower().replace(" ", "-")
+
+
+def _falta_seccion(fuente: str) -> str:
+    """Que hacer cuando una fuente no tiene su seccion en `sources.yaml`.
+
+    Pasa con los ficheros creados antes de que existiera esa fuente. El
+    interruptor de arriba si funciona -vive en el `.env`- pero sin seccion la
+    fuente arranca con los valores por defecto del codigo, y no hay nada que
+    ajustar aqui.
+    """
+    return (
+        f"Esta fuente no tiene seccion «{fuente}:» en sources.yaml, asi que "
+        "funciona con los valores por defecto y no hay nada que ajustar aqui.\n"
+        "Suele pasar con ficheros creados antes de que existiera la fuente. "
+        "Para configurarla, copia su bloque de config/sources.example.yaml "
+        "dentro de «sources:» y recarga con R."
+    )
 
 
 def _aviso_tos(fuente: str) -> str:

@@ -71,6 +71,8 @@ Cubre las **dos capas** de configuración del proyecto, repartidas en pestañas:
 | Ranking · Filtros · Publicación | Pesos **y penalizaciones**, palabras y autores vetados, idiomas, presentación |
 | Una por fuente | Su `weight`, `budget`, sus listas y **sus claves propias** (`window_hours` de Bluesky, `sort` de Lemmy, `subreddits_per_run` de Reddit…), más un **interruptor para activarla** |
 
+**Salen las nueve fuentes, siempre.** Si tu `sources.yaml` no tiene la sección de alguna —pasa con los ficheros creados antes de que existiera ese adapter—, su pestaña lo dice en vez de desaparecer: la fuente funciona con los valores por defecto y su interruptor sigue sirviendo, porque vive en el `.env`. Para ajustarla, copia su bloque de `config/sources.example.yaml`.
+
 Cada campo lleva debajo una línea explicando *por qué* tocarlo. Cinco cosas más que conviene saber:
 
 - **Los secretos salen enmascarados.** Un token visible en pantalla es un token que se filtra en una captura. El interruptor «Mostrar secretos» los revela cuando hace falta comprobarlos.

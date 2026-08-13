@@ -57,6 +57,14 @@ Ya no debería pasar: la TUI arranca el scheduler al abrirse cuando la configura
 
 Si aún ves que no hay rondas, el panel dice **por qué**, y cada motivo tiene un remedio distinto: desactivado en la configuración, sin Telegram configurado, o activado pero sin arrancar. Antes los tres se pintaban como «parado», que con `SCRAPPY_SCHEDULE_ENABLED=true` guardado se lee como una contradicción.
 
+### «En Configuración no salen todas las fuentes»
+
+Salen las nueve siempre. Si alguna aparece sin campos que ajustar, es que **tu `sources.yaml` no tiene su sección**: pasa con los ficheros creados antes de que existiera ese adapter. La pestaña lo dice y explica cómo añadirla.
+
+Mientras tanto la fuente funciona con los valores por defecto del código, y su interruptor de activación sí sirve —vive en el `.env`, no en el YAML—. Para poder ajustar sus pesos y sus listas, copia su bloque de `config/sources.example.yaml` dentro de `sources:` y recarga con `R`.
+
+El editor de YAML **no crea claves** a propósito: inventarse una sección sin sus comentarios sería peor que decir que falta.
+
 ### «Cambié el `.env` y no pasa nada»
 
 Los ajustes se leen **una vez, al arrancar**. Guardar el fichero no basta.

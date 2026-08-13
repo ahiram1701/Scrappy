@@ -12,6 +12,7 @@ conjunto apagaba fuentes.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -87,6 +88,52 @@ async def test_cada_fuente_tiene_su_pestana_y_su_interruptor(entorno: Path) -> N
         for fuente, clave in SOURCE_ENABLED_KEY.items():
             assert pilot.app.screen.query(f"#tab-src-{fuente}"), f"falta la pestana de {fuente}"
             assert pilot.app.screen.query(f"#env-{clave}"), f"falta el interruptor de {fuente}"
+
+
+async def test_una_fuente_sin_seccion_en_el_yaml_sigue_saliendo(tmp_path: Path) -> None:
+    """Un `sources.yaml` viejo dejaba fuentes sin pestana, sin decir nada.
+
+    Pasaba con los ficheros creados antes de que existiera un adapter: la
+    pantalla listaba las secciones del YAML, asi que esa fuente no se podia
+    ni activar ni configurar, y nada explicaba por que faltaba.
+    """
+    from textual.widgets import Switch
+
+    ejemplo = Path("config/sources.example.yaml")
+    if not ejemplo.exists():  # pragma: no cover
+        pytest.skip("no se encuentra config/sources.example.yaml")
+
+    # Un YAML sin imgur ni giphy, como el que tenia el usuario.
+    texto = ejemplo.read_text(encoding="utf-8")
+    recortado = re.sub(r"\n  imgur:.*?\n  youtube:", "\n  youtube:", texto, flags=re.DOTALL)
+    recortado = re.sub(r"\n  giphy:.*?\n  youtube:", "\n  youtube:", recortado, flags=re.DOTALL)
+    assert "imgur:" not in recortado and "giphy:" not in recortado
+
+    yaml_path = tmp_path / "sources.yaml"
+    yaml_path.write_text(recortado, encoding="utf-8")
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        f"{ENV}SCRAPPY_SOURCES_CONFIG_PATH={yaml_path.as_posix()}\n", encoding="utf-8"
+    )
+
+    async with ScrappyTUI(env_path=env_path, show_wizard=False).run_test() as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+        pantalla = pilot.app.screen
+
+        for fuente in ("imgur", "giphy"):
+            assert pantalla.query(f"#tab-src-{fuente}"), f"falta la pestana de {fuente}"
+            # El interruptor si funciona: vive en el `.env`, no en el YAML.
+            assert pantalla.query_one(f"#env-SCRAPPY_{fuente.upper()}_ENABLED", Switch)
+
+        # Y se explica que falta, en vez de dejar campos que no guardarian nada.
+        avisos = " ".join(_texto(w) for w in pantalla.query("Static"))
+        assert "no tiene seccion" in avisos
+        assert "sources.example.yaml" in avisos
+
+        # Sin seccion no se pintan sus campos: el editor no crea claves, asi
+        # que serian widgets que no hacen nada.
+        assert not pantalla.query("#yaml-sources__imgur__weight")
 
 
 async def test_el_tipo_de_widget_corresponde_al_tipo_del_campo(entorno: Path) -> None:
