@@ -22,6 +22,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from scrappy.app import ScrappyApp
 from scrappy.core.models import utcnow
+from scrappy.core.tiempo import formato_local
 from scrappy.observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -35,7 +36,10 @@ class PipelineScheduler:
 
     def __init__(self, app: ScrappyApp) -> None:
         self._app = app
-        self._scheduler = AsyncIOScheduler(timezone="UTC")
+        # En la zona del usuario, no en UTC. Con un intervalo en minutos da
+        # igual para el disparo, pero no para lo que se lee por pantalla: el
+        # panel decia «proxima ronda: 05:00» cuando en tu reloj eran las 23:00.
+        self._scheduler = AsyncIOScheduler(timezone=app.settings.tzinfo)
 
     def start(self) -> None:
         """Programa el job y arranca el scheduler."""
@@ -59,6 +63,9 @@ class PipelineScheduler:
             "scheduler_started",
             interval_minutes=settings.schedule_interval_minutes,
             items_per_run=settings.items_per_run,
+            # Va en el log a proposito: «publico de madrugada» casi siempre es
+            # esto, y sin verlo escrito no hay forma de saberlo.
+            timezone=str(settings.tzinfo),
         )
 
     async def _tick(self) -> None:
@@ -84,8 +91,8 @@ class PipelineScheduler:
 
     @property
     def next_run_at(self) -> str | None:
-        """Cuando toca la proxima ejecucion, en ISO-8601."""
+        """Cuando toca la proxima ejecucion, escrito para leerlo de un vistazo."""
         job = self._scheduler.get_job(_JOB_ID) if self._scheduler.running else None
         if job is None or job.next_run_time is None:
             return None
-        return str(job.next_run_time.isoformat())
+        return formato_local(job.next_run_time, self._app.settings.tzinfo)

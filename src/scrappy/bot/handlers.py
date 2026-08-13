@@ -106,7 +106,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if app.settings.schedule_enabled:
         lineas.append(
             f"\nPublicare {app.settings.items_per_run} items cada "
-            f"{app.settings.schedule_interval_minutes} minutos."
+            f"{app.settings.schedule_interval_minutes} minutos, "
+            # La zona va aqui porque «me publico de madrugada» es la queja
+            # tipica, y verla desde el primer mensaje la explica sin buscar.
+            f"en horario de {html.escape(str(app.settings.tzinfo))}."
         )
     else:
         lineas.append("\nEl scheduler esta desactivado: solo publicare con /fetch.")

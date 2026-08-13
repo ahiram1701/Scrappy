@@ -265,6 +265,9 @@ class ScrappyApp:
             "items_per_run": settings.items_per_run,
             "schedule_enabled": settings.schedule_enabled,
             "schedule_interval_minutes": settings.schedule_interval_minutes,
+            # La resuelta, no la escrita: si esta vacia en el `.env` lo que
+            # importa es que zona se detecto, no que no se puso ninguna.
+            "timezone": str(settings.tzinfo),
             "max_download_mb": settings.max_download_mb,
             "allow_nsfw": settings.allow_nsfw,
             "max_age_hours": settings.max_age_hours,

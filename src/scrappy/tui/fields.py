@@ -129,6 +129,13 @@ SCHEDULE_FIELDS = (
         "Cuantos se publican como maximo en cada ejecucion.",
         kind=FieldKind.NUMBER,
     ),
+    EnvField(
+        "SCRAPPY_TIMEZONE",
+        "Zona horaria",
+        "En formato IANA, como America/Mexico_City. Vacio = la del sistema. "
+        "Solo afecta a la hora de disparo y a las que se muestran: lo que se "
+        "guarda sigue siendo UTC.",
+    ),
 )
 
 STORAGE_FIELDS = (

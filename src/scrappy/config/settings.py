@@ -7,15 +7,20 @@ contiene una copia comentada lista para rellenar.
 
 from __future__ import annotations
 
+from datetime import UTC, tzinfo
 from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from scrappy.core.errors import ConfigError
+from scrappy.observability.logging import get_logger
+
+log = get_logger(__name__)
 
 # Limite duro de la Bot API para subir ficheros desde el bot. Con un servidor
 # local de Bot API sube a 2 GB, pero eso queda fuera del alcance por defecto.
@@ -80,6 +85,10 @@ class Settings(BaseSettings):
     schedule_enabled: bool = True
     schedule_interval_minutes: PositiveInt = 180
     items_per_run: PositiveInt = 5
+    timezone: str = Field(
+        default="",
+        description="Zona IANA para disparar y mostrar horas. Vacio = la del sistema.",
+    )
 
     # -- Reddit -------------------------------------------------------------
     # Sin credenciales: el registro de apps de Reddit se cerro en noviembre de
@@ -178,6 +187,29 @@ class Settings(BaseSettings):
         return frozenset(ids)
 
     @property
+    def tzinfo(self) -> tzinfo:
+        """Zona horaria efectiva: la configurada, o la del sistema.
+
+        Se usa para dos cosas: decidir a que hora dispara el scheduler y
+        escribir las horas que se le ensenan a una persona. Lo que se guarda en
+        la base de datos sigue siendo UTC sin excepcion -mezclar zonas ahi es
+        una fuente clasica de errores- asi que esto es solo presentacion.
+
+        Si la zona configurada no existe se cae a la del sistema en vez de
+        reventar: un error de tecleo no deberia impedir que el bot publique.
+        """
+        if self.timezone:
+            try:
+                return ZoneInfo(self.timezone)
+            except (ZoneInfoNotFoundError, ValueError):
+                log.warning(
+                    "timezone_desconocida",
+                    valor=self.timezone,
+                    detail="se usa la del sistema. Formato IANA: America/Mexico_City",
+                )
+        return _zona_del_sistema()
+
+    @property
     def max_download_bytes(self) -> int:
         return self.max_download_mb * 1024 * 1024
 
@@ -228,6 +260,25 @@ class Settings(BaseSettings):
             "instagram": self.instagram_enabled,
         }
         return tuple(name for name, enabled in flags.items() if enabled)
+
+
+@lru_cache(maxsize=1)
+def _zona_del_sistema() -> tzinfo:
+    """Zona horaria del sistema, detectada con `tzlocal`.
+
+    Se cachea porque la deteccion lee el registro en Windows y ficheros en
+    Linux, y esto se consulta cada vez que se pinta una hora en la interfaz.
+
+    En un contenedor sin zona configurada, `tzlocal` devuelve UTC, que es lo
+    correcto: mejor una hora coherente que una inventada.
+    """
+    try:
+        from tzlocal import get_localzone
+
+        return get_localzone()
+    except Exception as exc:  # pragma: no cover - depende del sistema
+        log.warning("timezone_no_detectada", error=str(exc), detail="se usa UTC")
+        return UTC
 
 
 @lru_cache(maxsize=1)
