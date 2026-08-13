@@ -36,7 +36,7 @@ dependencies = [
     "structlog>=24.4,<26",
     "Pillow>=10.4,<12",
     "ImageHash>=4.3,<5",
-    "APScheduler>=3.10,<4",
+    "APScheduler>=3.11.3,<4",
     # Deteccion de la zona horaria del sistema. Llega de todas formas como
     # dependencia de APScheduler, pero la usamos directamente y apoyarse en una
     # transitiva es apoyarse en un detalle de implementacion ajeno.
