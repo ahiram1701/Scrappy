@@ -4,6 +4,40 @@ Qué mirar, cada cuánto, y qué hacer cuando algo cambia.
 
 ---
 
+## Cuándo corre Scrappy
+
+La pregunta que más sorprende, y la que explica casi todos los «dejó de publicar de repente».
+
+> **Scrappy publica mientras hay un proceso suyo vivo, y ni un minuto más.**
+
+No hay ningún servicio de fondo esperando, ni nada agendado en la nube. Si el proceso muere —cierras la ventana, apagas el equipo, se cae la sesión— deja de publicar hasta que vuelva a arrancar. No se acumulan rondas pendientes: se pierden.
+
+### Las cuatro formas de tenerlo corriendo
+
+| Forma | Cómo se arranca | Corre… | Cuándo tiene sentido |
+|---|---|---|---|
+| **La ventana de la TUI** | Doble clic en `Scrappy.bat`, y «Arrancar» en el Panel | Mientras la ventana esté abierta | Explorar, calibrar, publicar a mano. **Cerrar la ventana es dejar de publicar** |
+| **Tarea al iniciar sesión** | Panel → Arranque automático → Activar | Desde que inicias sesión hasta que la cierras | Un equipo de escritorio que usas a diario. Sin ventana y sin acordarte |
+| **`scrappy run` en una terminal** | El comando, y dejarla abierta | Mientras la terminal viva | Ver los logs en directo mientras se depura algo |
+| **Docker o systemd** | `docker compose up -d` | Siempre, y se reinicia solo si se cae | Que publique aunque tu equipo esté apagado. Ver [DEPLOYMENT.md](DEPLOYMENT.md) |
+
+### Dos preguntas distintas
+
+Que Scrappy esté corriendo y que **publique solo** no es lo mismo. Hacen falta las dos cosas:
+
+1. **Un proceso vivo**, según la tabla de arriba.
+2. **El scheduler arrancado**, con `SCRAPPY_SCHEDULE_ENABLED=true` y en marcha.
+
+Con proceso pero sin scheduler, el bot responde a `/fetch` pero no publica por su cuenta. Con el scheduler configurado pero sin proceso, no pasa nada en absoluto: no hay nadie para ejecutarlo.
+
+`/start` te dice las dos cosas: si contesta, hay proceso; y su última línea dice si publicará solo, cada cuánto y en qué zona horaria.
+
+### Si tienes dos a la vez
+
+Con el arranque automático activo **y** el scheduler de la ventana en marcha hay dos procesos que pueden publicar. **No salen publicaciones repetidas** —la deduplicación lo impide— pero sí puede publicarse más de lo que esperas, porque son dos rondas independientes. El Panel avisa cuando detecta esa situación.
+
+---
+
 ## Comprobaciones rutinarias
 
 | Cada… | Qué | Cómo |
@@ -125,12 +159,18 @@ Estos surten efecto sin reiniciar, porque `sources.yaml` se lee en cada ejecuci�
 - Cambiar pesos, penalizaciones y `min_score`
 - Añadir palabras o autores a la lista de bloqueo
 
-Estos **sí** requieren reinicio (están en el `.env`):
+Los del `.env` no, porque se leen una sola vez al arrancar y desde ahí se reparten por los adapters, el cliente HTTP y el backend de estado:
 
 - Cualquier credencial
-- `STATE_BACKEND`, `WORKSPACE_ROOT`
+- `STATE_BACKEND`, `WORKSPACE_ROOT`, `TIMEZONE`
 - El intervalo del scheduler
 - Activar o desactivar fuentes
+
+Para aplicarlos **no hace falta reiniciar el proceso**: en el Panel de la TUI, **Recargar configuración** (o `R`) cierra la aplicación interna y la vuelve a montar con los ajustes releídos, sin perder la ventana. Guardar en la pantalla de Configuración ya lo hace por su cuenta.
+
+Comprueba con `/config` qué está usando de verdad: si un cambio no aparece ahí, no ha llegado al proceso.
+
+Fuera de la TUI —Docker, systemd, `scrappy run`— sí hay que reiniciar el proceso.
 
 ---
 

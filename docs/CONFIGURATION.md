@@ -13,7 +13,17 @@ Plantillas: [`.env.example`](../.env.example) y [`config/sources.example.yaml`](
 
 ## Variables de entorno
 
-Todas llevan el prefijo `SCRAPPY_`. Se leen de `.env` o de variables reales del sistema; estas últimas tienen prioridad.
+Todas llevan el prefijo `SCRAPPY_`. Se leen de `.env` o de variables reales del sistema; estas últimas tienen prioridad. En las tablas de abajo se omite el prefijo por brevedad: `STATE_BACKEND` es `SCRAPPY_STATE_BACKEND` en el fichero.
+
+> **Una clave que no está en el `.env` no queda desactivada: usa su valor por defecto.**
+>
+> Suena obvio escrito, y no lo es en la práctica. Si tu `.env` se creó antes de que existiera una fuente, esa fuente **está funcionando** aunque no aparezca por ninguna parte en el fichero — el defecto de Lemmy y Bluesky es `true`. Un `.env` incompleto no es un `.env` restrictivo.
+>
+> Por eso conviene dejar escritas incluso las opciones que no usas: `false` explícito y `false` por omisión hacen lo mismo, pero solo uno de los dos se puede leer.
+>
+> `scrappy sources` y `/config` muestran lo que está pasando de verdad, que es lo único que cuenta.
+
+**Los cambios no se aplican solos.** Los ajustes se leen una vez, al arrancar. Después de editar el `.env` hay que recargar —botón **Recargar configuración** del Panel de la TUI, o `R`— o reiniciar el proceso. `sources.yaml`, en cambio, se relee en cada ronda.
 
 ### Telegram
 
@@ -41,8 +51,13 @@ Todas llevan el prefijo `SCRAPPY_`. Se leen de `.env` o de variables reales del 
 | `SCHEDULE_ENABLED` | `true` | Si `false`, solo funciona `/fetch`. |
 | `SCHEDULE_INTERVAL_MINUTES` | `180` | Cada cuánto se ejecuta el pipeline. |
 | `ITEMS_PER_RUN` | `5` | Máximo de publicaciones por ejecución. |
+| `TIMEZONE` | *(la del sistema)* | Zona IANA (`America/Mexico_City`, `Europe/Madrid`). Déjala vacía y se detecta sola. Una zona inexistente no impide arrancar: se avisa en el log y se usa la del sistema. |
 
 Con los valores por defecto: 5 memes cada 3 horas, unos 40 al día.
+
+**La zona horaria es solo de presentación y de disparo.** Todo lo que se guarda —`published_at`, los logs, las comparaciones de antigüedad— va en UTC sin excepción. Mezclar zonas en la base de datos es una fuente clásica de errores que solo se manifiestan dos veces al año.
+
+Si tus publicaciones aparecen a horas raras, mira la última línea de `/start`: dice en qué zona está trabajando.
 
 ### Reddit
 

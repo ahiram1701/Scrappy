@@ -17,5 +17,6 @@ Formato: contexto → decisión → consecuencias.
 | [0009](0009-reddit-por-rss.md) | Reddit por feeds Atom en vez de la API oficial | Aceptada |
 | [0010](0010-tui-con-textual.md) | TUI con Textual, y ruamel para editar la configuración | Aceptada |
 | [0011](0011-diagnostico-compartido.md) | Un solo módulo de diagnóstico para tres consumidores | Aceptada |
+| [0012](0012-zona-horaria-y-autoarranque.md) | UTC dentro, hora local fuera; tarea de sesión para el autoarranque | Aceptada |
 
 Al añadir uno nuevo, numera correlativamente y añádelo a esta tabla.

@@ -210,21 +210,23 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     days = int(args[0]) if args[0].isdigit() else 7
-    since = utcnow() - timedelta(days=days)
+    # Cero es «todo», igual que el boton «Todo» del menu. Sin esto, `/stats 0`
+    # preguntaba por los ultimos cero dias y respondia que no habia nada, que
+    # es literalmente cierto y completamente inutil.
+    since = None if days == 0 else utcnow() - timedelta(days=days)
+    titulo = "Historico completo" if days == 0 else f"Ultimos {days} dias"
 
     app = _app(context)
     counts = await app.state.stats(since=since)
     total = await app.state.total_published()
 
     if not counts:
-        await message.reply_text(
-            f"Nada publicado en los ultimos {days} dias. Historico: {total} items."
-        )
+        await message.reply_text(f"{titulo}: nada publicado. Historico: {total} items.")
         return
 
     body = "\n".join(f"· {source}: {count}" for source, count in sorted(counts.items()))
     await message.reply_text(
-        f"<b>Ultimos {days} dias</b>\n{body}\n\nHistorico total: {total}",
+        f"<b>{titulo}</b>\n{body}\n\nHistorico total: {total}",
         parse_mode=ParseMode.HTML,
     )
 

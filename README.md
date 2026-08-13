@@ -53,6 +53,20 @@ El contenido pertenece a quien lo creó. Scrappy siempre acredita al autor y enl
 
 ---
 
+## Por dónde empezar
+
+| Si quieres… | Ve a |
+|---|---|
+| **Instalarlo y publicar el primer meme** | **[PRIMEROS_PASOS.md](docs/PRIMEROS_PASOS.md)** — de cero a publicar, en orden |
+| Saber qué hace cada comando y cada botón del bot | [TELEGRAM.md](docs/TELEGRAM.md) |
+| Manejarlo sin recordar flags | [TUI.md](docs/TUI.md) |
+| Dejarlo corriendo en un servidor | [DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| Entender cómo funciona por dentro | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+
+El resto de este README es la presentación. Si vienes a instalarlo, [PRIMEROS_PASOS.md](docs/PRIMEROS_PASOS.md) va directo.
+
+---
+
 ## Instalación rápida
 
 ### Con Docker (recomendado)
@@ -159,6 +173,16 @@ Si algo no funciona, **empieza siempre por `scrappy doctor`**: no dice solo qué
 
 Solo responden a los ids de `SCRAPPY_TELEGRAM_ADMIN_IDS`.
 
+Qué hace exactamente cada uno y cuál se puede deshacer: **[docs/TELEGRAM.md](docs/TELEGRAM.md)**.
+
+---
+
+## Cuándo publica
+
+**Mientras haya un proceso suyo vivo, y ni un minuto más.** Con doble clic en `Scrappy.bat`, cerrar la ventana es dejar de publicar: no hay ningún servicio de fondo esperando.
+
+Para que arranque solo, el Panel de la TUI tiene un interruptor de arranque automático, y para que corra aunque tu equipo esté apagado está Docker. Las cuatro formas, con sus ventajas, en [OPERATIONS.md](docs/OPERATIONS.md#cuándo-corre-scrappy).
+
 ---
 
 ## La garantía de "nada en disco"
@@ -180,6 +204,8 @@ Detalle completo y cómo verificarlo: **[docs/EPHEMERAL_STORAGE.md](docs/EPHEMER
 
 | Documento | Para qué |
 |---|---|
+| [PRIMEROS_PASOS.md](docs/PRIMEROS_PASOS.md) | De cero a la primera publicación |
+| [TELEGRAM.md](docs/TELEGRAM.md) | Cada comando y cada botón del bot, y si se pueden deshacer |
 | [TUI.md](docs/TUI.md) | La interfaz de terminal, pantalla a pantalla |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Cómo encaja todo, con diagramas |
 | [CONFIGURATION.md](docs/CONFIGURATION.md) | Todas las variables y claves del YAML |

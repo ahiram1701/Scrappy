@@ -15,6 +15,52 @@ SCRAPPY_LOG_LEVEL=DEBUG scrappy fetch --dry-run
 
 ---
 
+## Lo que más pasa
+
+Tres casos que no son fallos de nada, pero lo parecen.
+
+### «Cerré la ventana y dejó de publicar»
+
+No está roto: es como funciona. **Scrappy publica mientras hay un proceso suyo vivo**, y cerrar la ventana de `Scrappy.bat` mata ese proceso. No hay servicio de fondo esperando a menos que lo pongas tú.
+
+Para que arranque solo al iniciar sesión: Panel → **Arranque automático** → Activar. Las cuatro formas de tenerlo corriendo, en [OPERATIONS.md](OPERATIONS.md#cuándo-corre-scrappy).
+
+Cómo saber si hay alguno vivo: mándale `/start`. Si contesta, lo hay.
+
+### «Publicó de madrugada»
+
+Zona horaria. Hasta hace poco el scheduler iba en UTC, y en América eso son entre cinco y ocho horas de desfase.
+
+Mira la última línea de `/start`, que dice en qué zona está trabajando, o `/config`. Si no es la tuya, pon `SCRAPPY_TIMEZONE=America/Mexico_City` en el `.env` —formato IANA— o **déjalo vacío**, que es lo normal: así detecta la del sistema.
+
+Y luego recarga: el `.env` no se aplica solo (ver más abajo).
+
+Lo que se guarda en la base de datos sigue en UTC a propósito. Solo cambia la hora de disparo y las que se muestran.
+
+### «Una fuente aparece apagada pero estaba funcionando»
+
+**Una clave que no está en el `.env` no queda desactivada: usa su valor por defecto.** Si tu `.env` se creó antes de que existiera una fuente, esa fuente está activa aunque no aparezca por ninguna parte en el fichero — el defecto de Reddit, Lemmy y Bluesky es `true`.
+
+Lo que manda siempre:
+
+```bash
+scrappy sources
+```
+
+Si ves lo contrario —el `.env` dice `false` pero la fuente publica, o al revés— comprueba también las **variables de entorno del sistema**, que tienen prioridad sobre el fichero.
+
+> Una versión anterior de la pantalla de Configuración pintaba esas claves ausentes como interruptores apagados y, al guardar, escribía ese `false`. Si te desaparecieron fuentes sin tocar nada, fue eso: vuelve a activarlas en el `.env` y ya no se repetirá.
+
+### «Cambié el `.env` y no pasa nada»
+
+Los ajustes se leen **una vez, al arrancar**. Guardar el fichero no basta.
+
+Comprueba con `/config` qué está usando de verdad. Para aplicarlo sin reiniciar: Panel → **Recargar configuración**, o `R`. Guardar desde la pantalla de Configuración ya recarga por su cuenta.
+
+`sources.yaml` es la excepción: se relee en cada ronda.
+
+---
+
 ## Arranque
 
 ### `ffmpeg no esta en el PATH`

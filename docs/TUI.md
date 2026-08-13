@@ -16,13 +16,21 @@ scrappy tui
 | `c` | **Candidatos** | Ver qué publicaría y por qué; previsualizar y publicar |
 | `s` | **Configuración** | Editar el `.env` y `sources.yaml` enteros |
 
-Y tres teclas globales: `?` abre la ayuda con todos los atajos, `r` refresca la pantalla actual, `q` sale.
+Y cuatro teclas globales: `?` abre la ayuda con todos los atajos, `r` refresca la pantalla actual, `R` recarga la configuración, `q` sale.
 
 ### Panel
 
 Lo mismo que `scrappy health` y `scrappy sources`, pero de un vistazo: ffmpeg, backend de estado, Telegram, workspaces activos, la tabla de las nueve fuentes con lo que le falta a cada una, y cuántos items se han publicado.
 
-Abajo, el control del scheduler: **Arrancar**, **Pausar** y **Reanudar**, con la hora de la próxima ronda. Equivale a los comandos `/pause` y `/resume` del bot.
+**Scheduler.** **Arrancar**, **Pausar** y **Reanudar**, con la hora de la próxima ronda escrita en tu zona horaria y en lenguaje corriente: «próxima ronda: hoy a las 21:20», no un ISO en UTC. Equivale a los comandos `/pause` y `/resume` del bot.
+
+**Arranque automático.** Un interruptor para que Scrappy arranque al iniciar sesión, en segundo plano y sin ventana. Es la respuesta a «cerré la ventana y dejó de publicar»: sin esto, Scrappy solo corre mientras la tengas abierta ([OPERATIONS.md](OPERATIONS.md#cuándo-corre-scrappy)).
+
+Registra una tarea del sistema, así que pide confirmación y dice cómo quitarla. No hace falta administrador. Solo en Windows: en Linux y macOS lo correcto es la unidad de systemd de [DEPLOYMENT.md](DEPLOYMENT.md), y el panel lo dice en vez de dejar dos botones muertos.
+
+Si tienes el arranque automático **y** el scheduler de la ventana a la vez, el panel te avisa: son dos procesos que pueden publicar. No saldrá nada repetido —la deduplicación lo impide— pero conviene saberlo.
+
+**Configuración.** Qué `.env` se está usando, qué zona horaria se resolvió y dónde está el catálogo, con un botón para **recargar** sin reiniciar.
 
 ### Candidatos
 
@@ -44,12 +52,17 @@ Cubre las **dos capas** de configuración del proyecto, repartidas en pestañas:
 | Ranking · Filtros · Publicación | Pesos **y penalizaciones**, palabras y autores vetados, idiomas, presentación |
 | Una por fuente | Su `weight`, `budget`, sus listas y **sus claves propias** (`window_hours` de Bluesky, `sort` de Lemmy, `subreddits_per_run` de Reddit…), más un **interruptor para activarla** |
 
-Cada campo lleva debajo una línea explicando *por qué* tocarlo. Cuatro cosas más que conviene saber:
+Cada campo lleva debajo una línea explicando *por qué* tocarlo. Cinco cosas más que conviene saber:
 
 - **Los secretos salen enmascarados.** Un token visible en pantalla es un token que se filtra en una captura. El interruptor «Mostrar secretos» los revela cuando hace falta comprobarlos.
 - **Los comentarios de ambos ficheros se conservan.** Explican por qué cada valor es el que es, y son lo primero que necesitas al volver meses después.
 - **Se valida antes de escribir.** Si pones un peso fuera de rango, te lo dice y **no toca el fichero**: te quedas con lo que tenías en vez de con una configuración rota que impida arrancar.
-- **El `.env` se aplica al reiniciar**; los cambios de `sources.yaml` valen ya en la siguiente ronda.
+- **Solo se escribe lo que tocas.** El resto del fichero se queda exactamente como estaba.
+- **Guardar ya aplica.** El `.env` se recarga en caliente al guardar, sin reiniciar el proceso ni cerrar la ventana. Los cambios de `sources.yaml` valen en la siguiente ronda, como siempre.
+
+> **Lo que ves es lo que hace el bot, no lo que pone el fichero.** Una clave ausente del `.env` no está desactivada: usa su valor por defecto, y aquí aparece con ese valor. Es la distinción que conviene tener clara al leer un interruptor.
+>
+> Una versión anterior mostraba esas claves como apagadas y, al guardar, escribía ese `false` — así se apagaron dos fuentes que llevaban semanas publicando. Ya no: el interruptor refleja el valor efectivo, y guardar solo escribe lo que se ha tocado.
 
 Lo que el editor de YAML **no** hace es crear ni borrar secciones: solo cambia valores de claves existentes. Añadir una fuente nueva sigue siendo trabajo manual, con su comentario explicando el porqué.
 
