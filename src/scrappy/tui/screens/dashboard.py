@@ -16,6 +16,7 @@ from textual.widgets import Button, DataTable, Footer, Header, Static
 
 from scrappy.core.models import utcnow
 from scrappy.observability.logging import get_logger
+from scrappy.tui.widgets.confirm import ConfirmModal
 
 if TYPE_CHECKING:
     from scrappy.tui.main import ScrappyTUI
@@ -49,6 +50,12 @@ class DashboardScreen(Screen[None]):
             with Vertical(classes="seccion"):
                 yield Static("Publicado", classes="seccion-titulo")
                 yield Static(id="stats")
+            with Vertical(classes="seccion"):
+                yield Static("Arranque automatico", classes="seccion-titulo")
+                yield Static(id="estado-autoarranque")
+                with Horizontal(id="acciones-autoarranque"):
+                    yield Button("Activar", id="autoarranque-on", variant="success")
+                    yield Button("Desactivar", id="autoarranque-off")
             with Vertical(classes="seccion"):
                 yield Static("Configuracion", classes="seccion-titulo")
                 yield Static(id="estado-config")
@@ -98,7 +105,28 @@ class DashboardScreen(Screen[None]):
 
         await self._refresh_stats(scrappy)
         self._refresh_scheduler()
+        self._refresh_autoarranque()
         self._refresh_config(scrappy)
+
+    def _refresh_autoarranque(self) -> None:
+        estado = self.tui.autoarranque.status()
+        lineas = [estado.detalle]
+
+        # El aviso importa: con la tarea de fondo activa hay dos procesos que
+        # pueden publicar. No salen duplicados -la deduplicacion lo impide-
+        # pero conviene saber quien esta publicando.
+        if estado.activo and self.tui.scheduler is not None and self.tui.scheduler.next_run_at:
+            lineas.append(
+                "Ojo: tambien tienes el scheduler de esta ventana en marcha. "
+                "Publican los dos; no saldra nada repetido, pero son dos."
+            )
+
+        self.query_one("#estado-autoarranque", Static).update("\n".join(lineas))
+
+        activar = self.query_one("#autoarranque-on", Button)
+        desactivar = self.query_one("#autoarranque-off", Button)
+        activar.disabled = not estado.disponible or estado.activo
+        desactivar.disabled = not estado.disponible or not estado.activo
 
     def _refresh_config(self, scrappy: object) -> None:
         settings = scrappy.settings  # type: ignore[attr-defined]
@@ -149,6 +177,10 @@ class DashboardScreen(Screen[None]):
             await self.refresh_data()
             return
 
+        if event.button.id in {"autoarranque-on", "autoarranque-off"}:
+            await self._cambiar_autoarranque(activar=event.button.id == "autoarranque-on")
+            return
+
         scrappy = self.tui.require_scrappy()
         scheduler = self.tui.scheduler
         if scrappy is None or scheduler is None:
@@ -172,3 +204,40 @@ class DashboardScreen(Screen[None]):
                 self.tui.set_status("Scheduler reanudado")
 
         self._refresh_scheduler()
+        self._refresh_autoarranque()
+
+    async def _cambiar_autoarranque(self, *, activar: bool) -> None:
+        """Registra o quita la tarea del sistema, confirmando antes.
+
+        Se confirma porque esto toca el Programador de tareas de Windows, que
+        esta fuera de este proyecto: quien lo pulse tiene que saber que se le
+        queda algo instalado y como quitarlo.
+        """
+        if activar:
+            titulo, boton = "Arrancar Scrappy al iniciar sesion", "Activar"
+            detalle = (
+                "Se creara una tarea llamada «Scrappy» en el Programador de tareas "
+                "de Windows.\n\n"
+                "Al iniciar sesion arrancara el bot y el scheduler en segundo plano, "
+                "sin ventana. No hace falta administrador.\n\n"
+                "Para quitarla: este mismo boton, o «schtasks /Delete /TN Scrappy /F»."
+            )
+        else:
+            titulo, boton = "Dejar de arrancar solo", "Desactivar"
+            detalle = (
+                "Se borrara la tarea «Scrappy» del Programador de tareas.\n\n"
+                "Scrappy volvera a publicar solo mientras lo tengas abierto. Si ahora "
+                "mismo hay uno corriendo de fondo, seguira hasta que cierres la sesion."
+            )
+
+        if not await self.app.push_screen_wait(ConfirmModal(titulo, detalle, boton)):
+            return
+
+        autoarranque = self.tui.autoarranque
+        estado = autoarranque.enable() if activar else autoarranque.disable()
+
+        self.tui.set_status(estado.detalle)
+        # Si se pidio activar y no quedo activo, el detalle lleva el motivo.
+        if activar and not estado.activo:
+            self.notify(estado.detalle, severity="error", timeout=15)
+        self._refresh_autoarranque()

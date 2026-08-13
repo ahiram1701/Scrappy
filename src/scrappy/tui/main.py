@@ -25,6 +25,7 @@ from textual.widgets import Footer, Header, Static
 
 from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
+from scrappy.autostart import Autoarranque
 from scrappy.config.settings import Settings
 from scrappy.diagnostics import run_diagnostics
 from scrappy.observability.logging import configure_logging, get_logger
@@ -76,6 +77,7 @@ class ScrappyTUI(App[None]):
         *,
         env_path: Path | None = None,
         show_wizard: bool = True,
+        autoarranque: Autoarranque | None = None,
     ) -> None:
         super().__init__()
         self._settings = settings
@@ -92,6 +94,9 @@ class ScrappyTUI(App[None]):
         #: False cuando Telegram no esta configurado: sin publisher no se puede
         #: publicar, pero si explorar y calibrar.
         self.can_publish = False
+        #: Tarea de inicio de sesion. Inyectable para que los tests no toquen
+        #: las tareas reales del sistema de nadie.
+        self.autoarranque = autoarranque or Autoarranque()
 
     # ------------------------------------------------------------------
     # Composicion
