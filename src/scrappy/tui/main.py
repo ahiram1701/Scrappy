@@ -26,6 +26,7 @@ from textual.widgets import Footer, Header, Static
 from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
 from scrappy.autostart import Autoarranque
+from scrappy.bot.listener import BotListener
 from scrappy.config.settings import Settings
 from scrappy.diagnostics import run_diagnostics
 from scrappy.observability.logging import configure_logging, get_logger
@@ -78,6 +79,7 @@ class ScrappyTUI(App[None]):
         env_path: Path | None = None,
         show_wizard: bool = True,
         autoarranque: Autoarranque | None = None,
+        escuchar: bool = False,
     ) -> None:
         super().__init__()
         self._settings = settings
@@ -97,6 +99,14 @@ class ScrappyTUI(App[None]):
         #: Tarea de inicio de sesion. Inyectable para que los tests no toquen
         #: las tareas reales del sistema de nadie.
         self.autoarranque = autoarranque or Autoarranque()
+        #: Escucha los comandos y los botones de Telegram. None cuando no hay
+        #: credenciales, o cuando otro proceso ya esta escuchando.
+        self.listener: BotListener | None = None
+        #: Escuchar sale a la red y, peor, consume las actualizaciones del bot:
+        #: dos procesos con el mismo token se las quitan el uno al otro. Por eso
+        #: hay que pedirlo, y solo lo pide `run_tui`. Un test que lo activara
+        #: sin querer le robaria las pulsaciones al bot de verdad.
+        self._escuchar = escuchar
 
     # ------------------------------------------------------------------
     # Composicion
@@ -125,6 +135,7 @@ class ScrappyTUI(App[None]):
             return
 
         self._arrancar_si_toca()
+        await self._escuchar_telegram()
         await self.push_screen(DashboardScreen())
         if self.can_publish:
             self.set_status("Listo")
@@ -159,6 +170,31 @@ class ScrappyTUI(App[None]):
         self.scrappy = scrappy
         self.scheduler = PipelineScheduler(scrappy)
         return scrappy, self.scheduler
+
+    async def _escuchar_telegram(self) -> None:
+        """Atiende los comandos y los botones mientras la TUI este abierta.
+
+        Sin esto, la TUI publicaba y no oia: los botones que van bajo cada
+        meme no tenian a quien preguntar, asi que pulsarlos no hacia nada.
+        Publicar y escuchar son dos cosas distintas y solo `scrappy run`
+        montaba la segunda.
+        """
+        if self.scrappy is None or not self.can_publish or not self._escuchar:
+            return
+
+        self.listener = BotListener(self.scrappy, self.scheduler, on_conflict=self._aviso_conflicto)
+        if await self.listener.start():
+            log.info("tui_escuchando_telegram")
+        else:
+            self.listener = None
+
+    def _aviso_conflicto(self, motivo: str) -> None:
+        """Otro Scrappy esta escuchando con el mismo token.
+
+        Lo llama el updater desde su propio bucle, asi que se encola en vez de
+        tocar los widgets al vuelo.
+        """
+        self.call_later(self.set_status, motivo)
 
     def _arrancar_si_toca(self) -> None:
         """Arranca el scheduler si la configuracion dice que si.
@@ -205,7 +241,12 @@ class ScrappyTUI(App[None]):
             return False
 
         # Se cierra ANTES de montar lo nuevo: dos ScrappyApp vivos a la vez
-        # significan dos backends de estado sobre la misma base de datos.
+        # significan dos backends de estado sobre la misma base de datos, y
+        # dos escuchas sobre el mismo token significan que Telegram le da las
+        # actualizaciones a uno de los dos y 409 al otro.
+        if self.listener is not None:
+            await self.listener.stop()
+            self.listener = None
         if self.scheduler is not None:
             self.scheduler.shutdown()
         if self.scrappy is not None:
@@ -230,6 +271,7 @@ class ScrappyTUI(App[None]):
         # La misma regla que al arrancar, y por el mismo motivo: si se acaba de
         # activar el scheduler en la configuracion, recargar tiene que aplicarlo.
         self._arrancar_si_toca()
+        await self._escuchar_telegram()
 
         self._sincronizar_pantalla()
         log.info(
@@ -273,7 +315,10 @@ class ScrappyTUI(App[None]):
             self.call_later(self._switch_to, SettingsScreen())
 
     async def on_unmount(self) -> None:
-        """Apagado ordenado: cierra el scheduler y purga los workspaces."""
+        """Apagado ordenado: deja de escuchar, para el scheduler y purga."""
+        if self.listener is not None:
+            await self.listener.stop()
+            self.listener = None
         if self.scheduler is not None:
             self.scheduler.shutdown()
         if self.scrappy is not None:
@@ -340,8 +385,12 @@ class ScrappyTUI(App[None]):
 
 
 def run_tui(settings: Settings | None = None) -> None:
-    """Punto de entrada. Lo llaman `scrappy tui` y `Scrappy.bat`."""
-    ScrappyTUI(settings).run()
+    """Punto de entrada. Lo llaman `scrappy tui` y `Scrappy.bat`.
+
+    Es el unico sitio que pide escuchar Telegram: aqui hay una persona
+    delante que espera que sus botones respondan.
+    """
+    ScrappyTUI(settings, escuchar=True).run()
 
 
 __all__ = ["ScrappyTUI", "StatusBar", "run_tui"]

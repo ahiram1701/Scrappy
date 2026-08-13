@@ -25,7 +25,7 @@ from rich.table import Table
 
 from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
-from scrappy.bot.handlers import register_handlers
+from scrappy.bot.listener import BotListener
 from scrappy.core.errors import ScrappyError
 from scrappy.observability.logging import configure_logging
 from scrappy.scheduler.jobs import PipelineScheduler
@@ -186,22 +186,18 @@ def run(
                 await asyncio.Event().wait()  # espera indefinida
                 return 0
 
-            from telegram.ext import ApplicationBuilder
+            # El mismo BotListener que usa la TUI. Tenerlo escrito dos veces
+            # fue lo que dejo a la interfaz publicando sin escuchar.
+            listener = BotListener(app, scheduler)
+            if not await listener.start():
+                _fail("No se pudo conectar con Telegram. Ejecuta `scrappy doctor`.")
+                return 1
 
-            application = (
-                ApplicationBuilder().token(settings.telegram_bot_token.get_secret_value()).build()
-            )
-            # El scheduler va al bot para que pueda responder cuando toca la
-            # proxima ronda. Con el arranque automatico esto corre sin ventana,
-            # asi que Telegram es el unico sitio donde se puede preguntar.
-            register_handlers(application, app, scheduler)
-
-            async with application:
-                await application.start()
-                if application.updater is not None:
-                    await application.updater.start_polling(drop_pending_updates=True)
+            try:
                 console.print("[green]Bot y scheduler en marcha.[/] Ctrl+C para parar.")
                 await asyncio.Event().wait()
+            finally:
+                await listener.stop()
             return 0
 
         except (KeyboardInterrupt, asyncio.CancelledError):

@@ -25,7 +25,16 @@ from scrappy.core.models import (
 )
 from scrappy.storage.backends import MemoryStateBackend
 
-FIXED_NOW = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
+#: Momento de referencia de los candidatos de prueba. Fijo durante toda la
+#: ejecucion -para que dos tests no vean horas distintas- pero relativo a
+#: cuando se ejecuta, no a una fecha escrita a mano.
+#:
+#: Estuvo clavado al 11 de agosto de 2026, y el 13 la suite empezo a fallar
+#: sola: los tests del pipeline filtran por `max_age_hours` contra la hora
+#: real, asi que un candidato «de hace 4 horas» pasó a tener 48 y quedar
+#: fuera de la ventana. Una fecha literal en una fixture es una bomba de
+#: relojeria con la mecha del tamano de esa ventana.
+FIXED_NOW = datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +56,34 @@ def _sin_env_local(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     for nombre in [clave for clave in os.environ if clave.startswith("SCRAPPY_")]:
         monkeypatch.delenv(nombre, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _sin_telegram(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Corta cualquier llamada real a la API de Telegram.
+
+    `ScrappyApp.create` llama a `Bot.initialize()`, que consulta `getMe`. Los
+    tests que montan la aplicacion con un token estaban saliendo a la red de
+    verdad, en contra de lo que dice la cabecera de este fichero.
+
+    Lo grave venia despues: si un test llegara a escuchar, Telegram le daria a
+    el las actualizaciones y se las quitaria al bot de quien lo ejecuta, que
+    puede ser el suyo real. Mejor que ni pueda.
+    """
+    from telegram import User
+    from telegram.ext import ExtBot
+
+    async def _initialize(self: ExtBot) -> None:  # type: ignore[type-arg]
+        self._bot_user = User(
+            id=42, first_name="Scrappy de prueba", is_bot=True, username="scrappy_test_bot"
+        )
+        self._initialized = True
+
+    async def _shutdown(self: ExtBot) -> None:  # type: ignore[type-arg]
+        self._initialized = False
+
+    monkeypatch.setattr(ExtBot, "initialize", _initialize)
+    monkeypatch.setattr(ExtBot, "shutdown", _shutdown)
 
 
 # ---------------------------------------------------------------------------
