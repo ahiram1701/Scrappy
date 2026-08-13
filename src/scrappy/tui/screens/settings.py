@@ -342,14 +342,18 @@ class SettingsScreen(Screen[None]):
             return
 
         self.tui.set_status(f"Guardado: {', '.join(guardados)}")
-        if ".env" in guardados:
-            self.notify(
-                "El .env se aplica al reiniciar Scrappy. Los cambios de "
-                "sources.yaml valen ya en la proxima ronda.",
-                timeout=8,
-            )
-        else:
+
+        if ".env" not in guardados:
+            # El catalogo se relee en cada ronda; no hay nada que recargar.
             self.notify("Se aplica en la proxima ronda.")
+            return
+
+        # Los ajustes del `.env` se leen una sola vez, al construir la
+        # aplicacion, asi que guardar no basta. Antes esto decia «reinicia
+        # Scrappy»; ahora se recarga aqui mismo, que es lo que se queria hacer.
+        if await self.tui.recargar():
+            self.notify("Guardado y aplicado. No hace falta reiniciar.")
+            await self.refresh_data()
 
     def _volcar(self) -> None:
         """Lleva lo escrito en los widgets a los editores.

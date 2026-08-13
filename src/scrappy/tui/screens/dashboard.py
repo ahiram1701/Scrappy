@@ -49,6 +49,11 @@ class DashboardScreen(Screen[None]):
             with Vertical(classes="seccion"):
                 yield Static("Publicado", classes="seccion-titulo")
                 yield Static(id="stats")
+            with Vertical(classes="seccion"):
+                yield Static("Configuracion", classes="seccion-titulo")
+                yield Static(id="estado-config")
+                with Horizontal(id="acciones-config"):
+                    yield Button("Recargar configuracion", id="recargar-config")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -93,6 +98,21 @@ class DashboardScreen(Screen[None]):
 
         await self._refresh_stats(scrappy)
         self._refresh_scheduler()
+        self._refresh_config(scrappy)
+
+    def _refresh_config(self, scrappy: object) -> None:
+        settings = scrappy.settings  # type: ignore[attr-defined]
+        self.query_one("#estado-config", Static).update(
+            "\n".join(
+                [
+                    f"fichero         {self.tui.env_path}",
+                    # La zona resuelta, no la escrita: si el `.env` la lleva
+                    # vacia lo util es saber cual se detecto.
+                    f"zona horaria    {settings.tzinfo}",
+                    f"catalogo        {settings.sources_config_path}",
+                ]
+            )
+        )
 
     async def _refresh_stats(self, scrappy: object) -> None:
         state = scrappy.state  # type: ignore[attr-defined]
@@ -122,6 +142,13 @@ class DashboardScreen(Screen[None]):
 
     # ------------------------------------------------------------------
     async def on_button_pressed(self, event: Button.Pressed) -> None:
+        # Antes de exigir que Scrappy este montado: recargar es justamente lo
+        # que puede arreglar un arranque fallido por configuracion.
+        if event.button.id == "recargar-config":
+            await self.tui.action_recargar()
+            await self.refresh_data()
+            return
+
         scrappy = self.tui.require_scrappy()
         scheduler = self.tui.scheduler
         if scrappy is None or scheduler is None:

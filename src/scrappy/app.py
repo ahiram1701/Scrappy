@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import types
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -286,9 +287,17 @@ class ScrappyApp:
         }
 
 
-def load_settings_or_die() -> Settings:
-    """Carga los ajustes convirtiendo un error de validacion en un mensaje util."""
+def load_settings_or_die(env_path: Path | None = None) -> Settings:
+    """Carga los ajustes convirtiendo un error de validacion en un mensaje util.
+
+    Args:
+        env_path: fichero a leer. Por defecto el `.env` del directorio actual.
+            Lo usa la recarga en caliente de la TUI, que edita un fichero
+            concreto y tiene que releer ese mismo y no otro.
+    """
     try:
+        if env_path is not None:
+            return Settings(_env_file=env_path)
         return Settings()
     except ValueError as exc:
         raise ConfigError(

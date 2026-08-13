@@ -49,12 +49,14 @@ Screen {
     color: $error;
 }
 
-#acciones-scheduler {
+#acciones-scheduler,
+#acciones-config {
     height: auto;
     padding: 1 0;
 }
 
-#acciones-scheduler Button {
+#acciones-scheduler Button,
+#acciones-config Button {
     margin: 0 1 0 0;
 }
 

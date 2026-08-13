@@ -64,6 +64,9 @@ class ScrappyTUI(App[None]):
         Binding("s", "show_settings", "Configuracion"),
         Binding("question_mark", "show_help", "Ayuda"),
         Binding("r", "refresh_data", "Refrescar"),
+        # Mayuscula a proposito: recargar cierra conexiones y reconstruye la
+        # aplicacion entera, y no debe quedar a un dedo de «refrescar».
+        Binding("R", "recargar", "Recargar config"),
         Binding("q", "quit", "Salir"),
     ]
 
@@ -105,7 +108,7 @@ class ScrappyTUI(App[None]):
     async def _boot(self) -> None:
         """Monta `ScrappyApp` y abre el panel."""
         try:
-            settings = self._settings or load_settings_or_die()
+            settings = self._settings or load_settings_or_die(self.env_path)
         except Exception as exc:
             self.set_status(f"No se pudo leer la configuracion: {exc}")
             return
@@ -113,19 +116,8 @@ class ScrappyTUI(App[None]):
         # A fichero, no a stdout: Textual manda en el terminal.
         configure_logging(settings.log_level, "console", log_file=TUI_LOG_FILE)
 
-        # Con publisher solo si hay credenciales; si no, modo solo lectura.
-        self.can_publish = bool(
-            settings.telegram_bot_token.get_secret_value() and settings.telegram_target_chat_id
-        )
-
-        try:
-            self.scrappy = await ScrappyApp.create(settings, with_publisher=self.can_publish)
-        except Exception as exc:
-            log.exception("tui_boot_failed", error=str(exc))
-            self.set_status(f"Error al arrancar: {exc}")
+        if await self._montar(settings) is None:
             return
-
-        self.scheduler = PipelineScheduler(self.scrappy)
 
         await self.push_screen(DashboardScreen())
         if self.can_publish:
@@ -136,6 +128,81 @@ class ScrappyTUI(App[None]):
             )
 
         await self._ofrecer_asistente(settings)
+
+    async def _montar(self, settings: Settings) -> PipelineScheduler | None:
+        """Construye `ScrappyApp` y su scheduler, o None si falla.
+
+        Lo comparten el arranque y la recarga: son la misma operacion, y
+        tenerla escrita dos veces era garantia de que una se quedara atras.
+        """
+        # Con publisher solo si hay credenciales; si no, modo solo lectura.
+        self.can_publish = bool(
+            settings.telegram_bot_token.get_secret_value() and settings.telegram_target_chat_id
+        )
+
+        try:
+            self.scrappy = await ScrappyApp.create(settings, with_publisher=self.can_publish)
+        except Exception as exc:
+            log.exception("tui_boot_failed", error=str(exc))
+            self.set_status(f"Error al arrancar: {exc}")
+            return None
+
+        self.scheduler = PipelineScheduler(self.scrappy)
+        return self.scheduler
+
+    # ------------------------------------------------------------------
+    # Recarga en caliente
+    # ------------------------------------------------------------------
+    async def recargar(self) -> bool:
+        """Aplica los cambios del `.env` sin cerrar la ventana.
+
+        Los ajustes se leen una sola vez, al construir `ScrappyApp`: se
+        reparten por los adapters, el cliente HTTP y el backend de estado, y
+        ninguno de ellos vuelve a mirarlos. Por eso guardar el `.env` no bastaba
+        y habia que reiniciar el proceso.
+
+        Aqui se hace lo mismo que hace un reinicio, pero sin perder la sesion:
+        se cierra la aplicacion vieja -que purga los workspaces y cierra las
+        conexiones- y se monta una nueva con los ajustes releidos.
+
+        Si el scheduler estaba corriendo se vuelve a arrancar; si no, no. Un
+        reinicio silencioso del scheduler seria peor que no recargar.
+        """
+        corriendo = self.scheduler is not None and self.scheduler.next_run_at is not None
+
+        try:
+            settings = load_settings_or_die(self.env_path)
+        except Exception as exc:
+            self.set_status(f"No se pudo releer la configuracion: {exc}")
+            self.notify(str(exc), severity="error", timeout=10)
+            return False
+
+        # Se cierra ANTES de montar lo nuevo: dos ScrappyApp vivos a la vez
+        # significan dos backends de estado sobre la misma base de datos.
+        if self.scheduler is not None:
+            self.scheduler.shutdown()
+        if self.scrappy is not None:
+            await self.scrappy.aclose()
+        self.scrappy = None
+        self.scheduler = None
+
+        configure_logging(settings.log_level, "console", log_file=TUI_LOG_FILE)
+
+        # A partir de aqui `self._settings` ya no manda: lo que vale es el
+        # fichero. Si no se limpiara, la siguiente recarga volveria a los
+        # ajustes de arranque.
+        self._settings = None
+
+        scheduler = await self._montar(settings)
+        if scheduler is None:
+            return False
+
+        if corriendo:
+            scheduler.start()
+
+        await self.action_refresh_data(silencioso=True)
+        log.info("tui_recargada", scheduler=corriendo, timezone=str(settings.tzinfo))
+        return True
 
     async def _ofrecer_asistente(self, settings: Settings) -> None:
         """Abre el asistente solo si hay algo que impide publicar.
@@ -204,13 +271,25 @@ class ScrappyTUI(App[None]):
     async def action_show_help(self) -> None:
         await self.push_screen(HelpScreen())
 
-    async def action_refresh_data(self) -> None:
+    async def action_refresh_data(self, silencioso: bool = False) -> None:
+        """Recarga lo que muestra la pantalla actual.
+
+        `silencioso` lo usa la recarga en caliente: alli refrescar es un paso
+        intermedio, y avisar de que «esta pantalla no tiene nada que refrescar»
+        seria ruido sobre una operacion que si hizo algo.
+        """
         screen = self.screen
         refresh = getattr(screen, "refresh_data", None)
         if refresh is None:
-            self.notify("Esta pantalla no tiene nada que refrescar.")
+            if not silencioso:
+                self.notify("Esta pantalla no tiene nada que refrescar.")
             return
         await refresh()
+
+    async def action_recargar(self) -> None:
+        if await self.recargar():
+            self.set_status("Configuracion recargada")
+            self.notify("Configuracion recargada. No hace falta reiniciar.")
 
 
 def run_tui(settings: Settings | None = None) -> None:
