@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from pydantic import SecretStr
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -90,6 +91,14 @@ class SettingsScreen(Screen[None]):
         super().__init__()
         self._env: EnvEditor | None = None
         self._yaml: SourcesYamlEditor | None = None
+        #: Lo que se mostro al construir el formulario, por widget. Al guardar
+        #: solo se escribe lo que difiera de esto.
+        #:
+        #: Sin ello, el volcado reescribia las ~40 claves en cada guardado, y
+        #: una clave AUSENTE del `.env` -que el bot resolvia con su valor por
+        #: defecto- acababa materializada con el valor equivocado. Asi se
+        #: apagaron Lemmy y Bluesky en silencio.
+        self._inicial: dict[str, str] = {}
 
     @property
     def tui(self) -> ScrappyTUI:
@@ -145,6 +154,9 @@ class SettingsScreen(Screen[None]):
     async def _construir(self) -> None:
         tabs = self.query_one("#config-tabs", TabbedContent)
         await tabs.clear_panes()
+        # Se reconstruye el formulario entero, asi que los valores iniciales
+        # anteriores ya no valen como referencia.
+        self._inicial.clear()
 
         if self._env is not None:
             for titulo, campos_env in _ENV_TABS:
@@ -200,12 +212,39 @@ class SettingsScreen(Screen[None]):
     # ------------------------------------------------------------------
     def _campo_env(self, campo: EnvField) -> Vertical:
         assert self._env is not None
-        valor = self._env.get_value(campo.key)
+
+        # Si la clave no esta en el `.env`, el bot usa el valor por defecto de
+        # `Settings`. Mostrar una cadena vacia -que se pintaria como «apagado»-
+        # seria mentir sobre lo que hace de verdad.
+        valor = self._env.get_value(campo.key) or self._valor_efectivo(campo.key)
+
+        self._inicial[campo.widget_id] = valor
         return self._envolver(campo.label, campo.help, self._widget(campo, valor))
+
+    def _valor_efectivo(self, key: str) -> str:
+        """Valor que usa el bot cuando la clave falta del fichero.
+
+        Se lee de los `Settings` ya resueltos, que es la unica fuente que sabe
+        lo que esta pasando de verdad.
+        """
+        scrappy = self.tui.scrappy
+        if scrappy is None:
+            return ""
+
+        atributo = key.removeprefix("SCRAPPY_").lower()
+        valor = getattr(scrappy.settings, atributo, None)
+        if valor is None:
+            return ""
+        if isinstance(valor, bool):
+            return "true" if valor else "false"
+        if isinstance(valor, SecretStr):
+            return valor.get_secret_value()
+        return str(valor)
 
     def _campo_yaml(self, campo: YamlField) -> Vertical:
         assert self._yaml is not None
         valor = self._yaml.get_value(list(campo.path))
+        self._inicial[campo.widget_id] = _como_texto(valor)
         return self._envolver(campo.label, campo.help, self._widget(campo, valor))
 
     @staticmethod
@@ -332,6 +371,11 @@ class SettingsScreen(Screen[None]):
                 self._volcar_uno(desplegable.id or "", str(elegido))
 
     def _volcar_uno(self, widget_id: str, texto: str) -> None:
+        # Solo se escribe lo que el usuario ha tocado. Reescribirlo todo es lo
+        # que convertia una clave ausente en un valor explicito equivocado.
+        if self._inicial.get(widget_id, _CENTINELA) == texto:
+            return
+
         if widget_id.startswith("env-") and self._env is not None:
             self._env.set_value(widget_id.removeprefix("env-"), texto)
             return
@@ -341,6 +385,20 @@ class SettingsScreen(Screen[None]):
             self._yaml.set_value(ruta, _convertir(ruta, texto))
 
     # ------------------------------------------------------------------
+
+
+#: Valor imposible: si un widget no esta en `_inicial`, se escribe siempre.
+#: Una cadena vacia no serviria, porque es un valor legitimo.
+_CENTINELA = "\x00no-registrado"
+
+
+def _como_texto(valor: Any) -> str:
+    """Representacion en texto de un valor del YAML, como la vera el widget."""
+    if isinstance(valor, bool):
+        return "true" if valor else "false"
+    if isinstance(valor, list):
+        return ", ".join(str(item) for item in valor)
+    return "" if valor is None else str(valor)
 
 
 def _slug(titulo: str) -> str:

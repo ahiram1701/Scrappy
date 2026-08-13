@@ -6,6 +6,7 @@ Ningun test toca la red ni Telegram: las llamadas HTTP se interceptan con
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,27 @@ from scrappy.core.models import (
 from scrappy.storage.backends import MemoryStateBackend
 
 FIXED_NOW = datetime(2026, 8, 11, 12, 0, 0, tzinfo=UTC)
+
+
+# ---------------------------------------------------------------------------
+# Aislamiento
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _sin_env_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Aisla los tests del `.env` real del repositorio.
+
+    `Settings()` sin argumentos lee `.env` del directorio actual, asi que un
+    test que comprueba valores por defecto pasaba o fallaba segun lo que
+    tuviera el fichero local de quien lo ejecutara. Se descubrio cuando un
+    guardado de la TUI escribio `SCRAPPY_LEMMY_ENABLED=false` y tumbo un test
+    que no tenia nada que ver con la TUI.
+
+    Tambien se limpian las variables `SCRAPPY_*` del entorno, que tienen aun
+    mas prioridad que el fichero.
+    """
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    for nombre in [clave for clave in os.environ if clave.startswith("SCRAPPY_")]:
+        monkeypatch.delenv(nombre, raising=False)
 
 
 # ---------------------------------------------------------------------------
