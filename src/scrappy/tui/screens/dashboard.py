@@ -162,19 +162,56 @@ class DashboardScreen(Screen[None]):
         self.query_one("#stats", Static).update(f"{detalle}\nhistorico: {total}")
 
     def _refresh_scheduler(self) -> None:
+        """Estado del scheduler, distinguiendo por que no esta publicando.
+
+        Antes, los tres motivos distintos por los que no habia rondas -sin
+        arrancar, desactivado en la configuracion, o sin Telegram- se pintaban
+        todos como «parado». Con `SCRAPPY_SCHEDULE_ENABLED=true` guardado eso
+        se lee como una contradiccion, porque lo es: la palabra «parado» tapaba
+        cual de los tres era.
+        """
         scheduler = self.tui.scheduler
         scrappy = self.tui.scrappy
         if scheduler is None or scrappy is None:
             return
 
-        proxima = scheduler.next_run_at
-        if proxima is None:
-            texto = "parado"
+        cada = scrappy.settings.schedule_interval_minutes
+        cuantos = scrappy.settings.items_per_run
+
+        if not scheduler.enabled:
+            texto = (
+                "desactivado en la configuracion (Programacion → Scheduler activo).\n"
+                "Solo publicara cuando se lo pidas, con «Publicar» o con /fetch."
+            )
+        elif not self.tui.can_publish:
+            texto = (
+                "no puede arrancar: falta configurar Telegram.\n"
+                "Sin eso, cada ronda seria un fallo y ninguna publicacion."
+            )
+        elif not scheduler.running:
+            texto = "activado en la configuracion, pero sin arrancar. Pulsa «Arrancar»."
         elif scrappy.paused:
-            texto = "en pausa (`/fetch` y el boton de publicar siguen funcionando)"
+            texto = (
+                "en pausa. Las rondas automaticas estan detenidas; «Publicar» "
+                "y /fetch siguen funcionando."
+            )
         else:
-            texto = f"proxima ronda: {proxima}"
+            texto = (
+                f"en marcha: {cuantos} items cada {cada} min\n"
+                f"proxima ronda: {scheduler.next_run_at}"
+            )
+
         self.query_one("#estado-scheduler", Static).update(texto)
+
+        # Un boton que no puede hacer nada tiene que verse deshabilitado, no
+        # responder con silencio. «Arrancar» con el scheduler desactivado en la
+        # configuracion no hacia absolutamente nada, sin decirlo.
+        en_marcha = scheduler.running
+        self.query_one("#arrancar", Button).disabled = (
+            en_marcha or not scheduler.enabled or not self.tui.can_publish
+        )
+        self.query_one("#pausar", Button).disabled = not en_marcha or scrappy.paused
+        self.query_one("#reanudar", Button).disabled = not scrappy.paused
 
     # ------------------------------------------------------------------
     async def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -196,14 +233,23 @@ class DashboardScreen(Screen[None]):
 
         match event.button.id:
             case "arrancar":
+                # Los botones ya salen deshabilitados cuando no pueden hacer
+                # nada; esto cubre el caso de pulsar antes de que se repinten.
                 if not self.tui.can_publish:
                     self.notify(
                         "Sin Telegram configurado el scheduler no puede publicar.",
                         severity="warning",
                     )
                     return
-                scheduler.start()
-                self.tui.set_status("Scheduler arrancado")
+                if scheduler.start():
+                    self.tui.set_status("Scheduler arrancado")
+                else:
+                    self.notify(
+                        "El scheduler esta desactivado en la configuracion. "
+                        "Activalo en Configuracion → Programacion y recarga.",
+                        severity="warning",
+                        timeout=10,
+                    )
             case "pausar":
                 scrappy.paused = True
                 self.tui.set_status("Scheduler en pausa")

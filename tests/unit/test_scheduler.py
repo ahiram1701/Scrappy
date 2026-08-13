@@ -74,8 +74,42 @@ def test_parado_no_promete_ninguna_ronda(ajustes: Settings) -> None:
 async def test_desactivado_ni_siquiera_arranca() -> None:
     ajustes = Settings(schedule_enabled=False)
     scheduler = PipelineScheduler(AppFalsa(ajustes))  # type: ignore[arg-type]
-    scheduler.start()
-    assert not scheduler._scheduler.running
+
+    # Y lo dice al devolver, en vez de no hacer nada en silencio: quien pulsa
+    # «Arrancar» tiene que enterarse de por que no arranco.
+    assert scheduler.start() is False
+    assert not scheduler.running
+    assert not scheduler.enabled
+
+
+async def test_arrancar_dos_veces_no_revienta(ajustes: Settings) -> None:
+    """`add_job` con un id que ya existe lanza `ConflictingIdError`.
+
+    En la TUI eso era pulsar «Arrancar» dos veces seguidas.
+    """
+    scheduler = PipelineScheduler(AppFalsa(ajustes))  # type: ignore[arg-type]
+    try:
+        assert scheduler.start() is True
+        assert scheduler.start() is True  # no debe levantar
+        assert scheduler.running
+    finally:
+        scheduler.shutdown()
+
+
+async def test_running_distingue_arrancado_de_desactivado(ajustes: Settings) -> None:
+    """Son dos estados distintos, y mirarlos por `next_run_at` los mezclaba."""
+    scheduler = PipelineScheduler(AppFalsa(ajustes))  # type: ignore[arg-type]
+
+    # Habilitado en la configuracion, pero nadie lo ha arrancado.
+    assert scheduler.enabled
+    assert not scheduler.running
+
+    try:
+        scheduler.start()
+        assert scheduler.enabled
+        assert scheduler.running
+    finally:
+        scheduler.shutdown()
 
 
 async def test_un_fallo_del_pipeline_no_desprograma_el_job(ajustes: Settings) -> None:

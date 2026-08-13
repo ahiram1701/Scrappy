@@ -124,6 +124,7 @@ class ScrappyTUI(App[None]):
         if await self._montar(settings) is None:
             return
 
+        self._arrancar_si_toca()
         await self.push_screen(DashboardScreen())
         if self.can_publish:
             self.set_status("Listo")
@@ -134,11 +135,14 @@ class ScrappyTUI(App[None]):
 
         await self._ofrecer_asistente(settings)
 
-    async def _montar(self, settings: Settings) -> PipelineScheduler | None:
+    async def _montar(self, settings: Settings) -> tuple[ScrappyApp, PipelineScheduler] | None:
         """Construye `ScrappyApp` y su scheduler, o None si falla.
 
         Lo comparten el arranque y la recarga: son la misma operacion, y
         tenerla escrita dos veces era garantia de que una se quedara atras.
+
+        Devuelve las dos piezas en vez de dejarlas solo en los atributos para
+        que quien llama pueda usarlas sin volver a comprobar si son None.
         """
         # Con publisher solo si hay credenciales; si no, modo solo lectura.
         self.can_publish = bool(
@@ -146,14 +150,31 @@ class ScrappyTUI(App[None]):
         )
 
         try:
-            self.scrappy = await ScrappyApp.create(settings, with_publisher=self.can_publish)
+            scrappy = await ScrappyApp.create(settings, with_publisher=self.can_publish)
         except Exception as exc:
             log.exception("tui_boot_failed", error=str(exc))
             self.set_status(f"Error al arrancar: {exc}")
             return None
 
-        self.scheduler = PipelineScheduler(self.scrappy)
-        return self.scheduler
+        self.scrappy = scrappy
+        self.scheduler = PipelineScheduler(scrappy)
+        return scrappy, self.scheduler
+
+    def _arrancar_si_toca(self) -> None:
+        """Arranca el scheduler si la configuracion dice que si.
+
+        `scrappy run` lo arranca desde siempre, y la TUI no lo hacia: con
+        `SCRAPPY_SCHEDULE_ENABLED=true` la pantalla de configuracion decia
+        «activo» y el panel decia «parado», que era cierto pero se referia a
+        otra cosa. Dos interfaces del mismo proyecto no pueden entender lo
+        mismo de formas distintas.
+
+        Sin Telegram configurado no se arranca: sin publisher, cada ronda
+        seria un fallo cada N horas y ninguna publicacion.
+        """
+        if self.scheduler is None or not self.can_publish:
+            return
+        self.scheduler.start()
 
     # ------------------------------------------------------------------
     # Recarga en caliente
@@ -170,10 +191,11 @@ class ScrappyTUI(App[None]):
         se cierra la aplicacion vieja -que purga los workspaces y cierra las
         conexiones- y se monta una nueva con los ajustes releidos.
 
-        Si el scheduler estaba corriendo se vuelve a arrancar; si no, no. Un
-        reinicio silencioso del scheduler seria peor que no recargar.
+        El scheduler se vuelve a dejar como estaba, incluida la pausa: `paused`
+        vive en `ScrappyApp`, que aqui se tira entera, asi que sin guardarlo
+        antes un `/pause` se deshacia solo al guardar cualquier ajuste.
         """
-        corriendo = self.scheduler is not None and self.scheduler.next_run_at is not None
+        pausado = self.scrappy is not None and self.scrappy.paused
 
         try:
             settings = load_settings_or_die(self.env_path)
@@ -198,15 +220,24 @@ class ScrappyTUI(App[None]):
         # ajustes de arranque.
         self._settings = None
 
-        scheduler = await self._montar(settings)
-        if scheduler is None:
+        montado = await self._montar(settings)
+        if montado is None:
             return False
+        scrappy, scheduler = montado
 
-        if corriendo:
-            scheduler.start()
+        scrappy.paused = pausado
+
+        # La misma regla que al arrancar, y por el mismo motivo: si se acaba de
+        # activar el scheduler en la configuracion, recargar tiene que aplicarlo.
+        self._arrancar_si_toca()
 
         self._sincronizar_pantalla()
-        log.info("tui_recargada", scheduler=corriendo, timezone=str(settings.tzinfo))
+        log.info(
+            "tui_recargada",
+            scheduler=scheduler.running,
+            pausado=pausado,
+            timezone=str(settings.tzinfo),
+        )
         return True
 
     def _sincronizar_pantalla(self) -> None:

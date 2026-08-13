@@ -22,7 +22,19 @@ Y cuatro teclas globales: `?` abre la ayuda con todos los atajos, `r` refresca l
 
 Lo mismo que `scrappy health` y `scrappy sources`, pero de un vistazo: ffmpeg, backend de estado, Telegram, workspaces activos, la tabla de las nueve fuentes con lo que le falta a cada una, y cuántos items se han publicado.
 
-**Scheduler.** **Arrancar**, **Pausar** y **Reanudar**, con la hora de la próxima ronda escrita en tu zona horaria y en lenguaje corriente: «próxima ronda: hoy a las 21:20», no un ISO en UTC. Equivale a los comandos `/pause` y `/resume` del bot.
+**Scheduler.** Si la configuración lo tiene activado, **arranca solo al abrir la TUI**, igual que hace `scrappy run`. La hora de la próxima ronda va en tu zona horaria y en lenguaje corriente: «próxima ronda: hoy a las 21:20», no un ISO en UTC.
+
+Los botones **Arrancar**, **Pausar** y **Reanudar** equivalen a `/pause` y `/resume` del bot, y solo están habilitados cuando pueden hacer algo.
+
+Cuando no hay rondas, el panel dice **cuál de los tres motivos** es, porque el remedio de cada uno es distinto:
+
+| Lo que dice | Qué hacer |
+|---|---|
+| `desactivado en la configuracion` | Encender «Scheduler activo» en Configuración → Programación, y guardar |
+| `no puede arrancar: falta configurar Telegram` | Rellenar el token y el chat destino |
+| `activado en la configuracion, pero sin arrancar` | Pulsar **Arrancar** |
+
+**Pausar** detiene solo las rondas automáticas; publicar a mano y `/fetch` siguen funcionando. La pausa **sobrevive a una recarga**: guardar un ajuste no reanuda por su cuenta algo que paraste a propósito.
 
 **Arranque automático.** Un interruptor para que Scrappy arranque al iniciar sesión, en segundo plano y sin ventana. Es la respuesta a «cerré la ventana y dejó de publicar»: sin esto, Scrappy solo corre mientras la tengas abierta ([OPERATIONS.md](OPERATIONS.md#cuándo-corre-scrappy)).
 

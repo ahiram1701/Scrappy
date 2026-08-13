@@ -41,12 +41,20 @@ class PipelineScheduler:
         # panel decia «proxima ronda: 05:00» cuando en tu reloj eran las 23:00.
         self._scheduler = AsyncIOScheduler(timezone=app.settings.tzinfo)
 
-    def start(self) -> None:
-        """Programa el job y arranca el scheduler."""
+    def start(self) -> bool:
+        """Programa el job y arranca el scheduler. Devuelve si quedo en marcha.
+
+        Es idempotente: llamarlo estando ya en marcha no hace nada. Sin eso,
+        pulsar dos veces «Arrancar» en la TUI reventaba con `ConflictingIdError`,
+        porque el job ya estaba programado con ese mismo id.
+        """
+        if self.running:
+            return True
+
         settings = self._app.settings
         if not settings.schedule_enabled:
             log.info("scheduler_disabled", detail="SCRAPPY_SCHEDULE_ENABLED=false")
-            return
+            return False
 
         self._scheduler.add_job(
             self._tick,
@@ -57,6 +65,9 @@ class PipelineScheduler:
             max_instances=1,
             coalesce=True,
             misfire_grace_time=300,
+            # Por si quedara un job de un arranque anterior: sustituirlo es
+            # preferible a fallar por duplicado.
+            replace_existing=True,
         )
         self._scheduler.start()
         log.info(
@@ -67,6 +78,7 @@ class PipelineScheduler:
             # esto, y sin verlo escrito no hay forma de saberlo.
             timezone=str(settings.tzinfo),
         )
+        return True
 
     async def _tick(self) -> None:
         """Una ejecucion programada.
@@ -88,6 +100,21 @@ class PipelineScheduler:
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
             log.info("scheduler_stopped")
+
+    @property
+    def running(self) -> bool:
+        """Si hay rondas programadas ahora mismo.
+
+        Separado de `next_run_at` a proposito: preguntar «esta en marcha?»
+        mirando si hay una fecha mezcla dos cosas distintas, y hace imposible
+        distinguir «no arrancado» de «desactivado en la configuracion».
+        """
+        return bool(self._scheduler.running)
+
+    @property
+    def enabled(self) -> bool:
+        """Si la configuracion permite que se arranque."""
+        return self._app.settings.schedule_enabled
 
     @property
     def next_run_at(self) -> str | None:

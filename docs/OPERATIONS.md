@@ -26,9 +26,11 @@ No hay ningún servicio de fondo esperando, ni nada agendado en la nube. Si el p
 Que Scrappy esté corriendo y que **publique solo** no es lo mismo. Hacen falta las dos cosas:
 
 1. **Un proceso vivo**, según la tabla de arriba.
-2. **El scheduler arrancado**, con `SCRAPPY_SCHEDULE_ENABLED=true` y en marcha.
+2. **`SCRAPPY_SCHEDULE_ENABLED=true`**, que es como viene.
 
-Con proceso pero sin scheduler, el bot responde a `/fetch` pero no publica por su cuenta. Con el scheduler configurado pero sin proceso, no pasa nada en absoluto: no hay nadie para ejecutarlo.
+Con la segunda puesta, el scheduler arranca solo: lo hacen tanto `scrappy run` como la TUI al abrirse. No hay que acordarse de nada — salvo que falte configurar Telegram, en cuyo caso no arranca y el panel lo dice, porque publicar sin bot solo produciría un fallo cada N horas.
+
+Con proceso pero con el scheduler desactivado, el bot responde a `/fetch` pero no publica por su cuenta. Con el scheduler activado pero sin proceso, no pasa nada en absoluto: no hay nadie para ejecutarlo.
 
 `/start` te dice las dos cosas: si contesta, hay proceso; y su última línea dice si publicará solo, cada cuánto y en qué zona horaria.
 

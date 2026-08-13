@@ -51,6 +51,12 @@ Si ves lo contrario —el `.env` dice `false` pero la fuente publica, o al revé
 
 > Una versión anterior de la pantalla de Configuración pintaba esas claves ausentes como interruptores apagados y, al guardar, escribía ese `false`. Si te desaparecieron fuentes sin tocar nada, fue eso: vuelve a activarlas en el `.env` y ya no se repetirá.
 
+### «El panel dice parado y la configuración dice activo»
+
+Ya no debería pasar: la TUI arranca el scheduler al abrirse cuando la configuración lo permite, igual que hace `scrappy run`.
+
+Si aún ves que no hay rondas, el panel dice **por qué**, y cada motivo tiene un remedio distinto: desactivado en la configuración, sin Telegram configurado, o activado pero sin arrancar. Antes los tres se pintaban como «parado», que con `SCRAPPY_SCHEDULE_ENABLED=true` guardado se lee como una contradicción.
+
 ### «Cambié el `.env` y no pasa nada»
 
 Los ajustes se leen **una vez, al arrancar**. Guardar el fichero no basta.
