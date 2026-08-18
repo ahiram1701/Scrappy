@@ -179,15 +179,36 @@ scrappy health
 scrappy fetch --dry-run
 ```
 
-### Como tarea programada
+### Que arranque solo al iniciar sesión
 
-Al arrancar la sesión, sin ventana:
+Hay **dos modos**, y la diferencia importa:
+
+| | Arranca cuando | Publica con la sesión cerrada | Pide permisos |
+|---|---|---|---|
+| **Al iniciar sesión** | entras al equipo | ❌ no | no |
+| **Sin iniciar sesión** | se enciende el equipo | ✅ sí | sí, UAC una vez |
+
+Desde el panel de la TUI son los botones «Al iniciar sesión» y «Sin iniciar sesión». Desde la terminal, **ejecutándolo en la carpeta de Scrappy** (de ahí se leen `.env` y `config/`):
 
 ```bash
-schtasks /create /tn "Scrappy" /tr "C:\DEV\Github\Scrappy\.venv\Scripts\scrappy.exe run" /sc onlogon /rl highest
+scrappy autostart --sistema
 ```
 
-Mejor aún: crea un `.vbs` que lance el `.exe` con `WindowStyle 0` para que no aparezca la consola.
+`--sesion` para el otro modo, `--quitar` para dejar de arrancar solo, y sin opciones para ver cómo está.
+
+**Sin iniciar sesión** registra una tarea `Scrappy` con disparador de arranque, que corre como tu cuenta mediante `S4U` —sin sesión y sin guardar tu contraseña— o como `SYSTEM` si tu cuenta no admite S4U. Windows solo deja crear esa tarea a un proceso elevado, así que sale el diálogo de UAC; si lo rechazas no se registra nada y se te dice.
+
+**Al iniciar sesión** intenta la misma tarea (con `LogonTrigger`) y, como la TUI no corre elevada, lo normal es que acabe poniendo un acceso directo `Scrappy.lnk` en tu carpeta de Inicio (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`), que arranca lo mismo.
+
+Para comprobarlo a mano:
+
+```bash
+schtasks /Query /TN Scrappy /FO LIST /V
+```
+
+Los logs del proceso que arranca solo van a `data/scrappy.log` —sin consola no hay dónde imprimirlos— y rotan a los 5 MB. Tras un reinicio, la primera línea del log te dice a qué hora arrancó.
+
+**Un aviso sobre el modo sin sesión:** ese proceso corre bajo una sesión de inicio distinta de la tuya. Si muere a mitad de una descarga, el workspace que deje **no lo puede borrar tu sesión** —`scrappy purge` dirá «Acceso denegado»— y hace falta borrarlo desde una terminal como administrador.
 
 **Un aviso sobre Windows:** el borrado de workspaces tiene que lidiar con ficheros bloqueados y con el flag de solo lectura. Está resuelto y probado en CI sobre Windows, pero si ves avisos `workspace_cleanup_failed` en los logs, ejecuta `scrappy purge` y abre una issue.
 

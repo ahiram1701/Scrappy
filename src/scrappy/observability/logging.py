@@ -13,10 +13,22 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import MutableMapping
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
 import structlog
+
+#: Donde van los logs cuando el proceso corre sin consola. Es el caso de la
+#: tarea de autoarranque de Windows: la lanza `pythonw.exe`, que no tiene
+#: ventana, y ahi `sys.stdout` es None. Sin este destino no habria ni logs ni
+#: forma de saber por que dejo de publicar.
+LOG_SIN_CONSOLA = Path("data/scrappy.log")
+
+#: Corte de rotacion del log en fichero. Cinco megas es de sobra para ver que
+#: paso en las ultimas rondas sin dejar el disco a merced de un proceso que
+#: lleva semanas encendido.
+_MAX_BYTES_LOG = 5 * 1024 * 1024
 
 _REDACTED = "***"
 _SECRET_KEYS = frozenset(
@@ -55,17 +67,33 @@ def configure_logging(
     Args:
         level: DEBUG, INFO, WARNING o ERROR.
         fmt: `console` (coloreado) o `json` (una linea por evento).
-        log_file: si se indica, los logs van ahi en vez de a stdout.
+        log_file: si se indica, los logs van ahi en vez de a stdout. Sin
+            consola se usa `LOG_SIN_CONSOLA` aunque no se indique nada.
 
     `log_file` existe por la TUI. Textual es dueno del terminal mientras corre,
     asi que un solo evento escrito en stdout pintaria basura sobre la interfaz
     y la dejaria ilegible hasta el siguiente refresco completo. Mandandolos a
     fichero se conservan enteros y la pantalla queda limpia.
     """
+    # Sin consola no hay stdout al que escribir ni al que preguntarle si es un
+    # tty: `sys.stdout` es None y cualquiera de las dos cosas revienta. Es
+    # exactamente el caso del autoarranque, que corre con `pythonw`.
+    if log_file is None and sys.stdout is None:
+        log_file = LOG_SIN_CONSOLA
+
     handlers: list[logging.Handler] = []
     if log_file is not None:
         log_file.parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(log_file, encoding="utf-8"))
+        # Rotativo porque el proceso del autoarranque no termina nunca: un
+        # `FileHandler` a secas crece hasta llenar el disco.
+        handlers.append(
+            RotatingFileHandler(
+                log_file,
+                maxBytes=_MAX_BYTES_LOG,
+                backupCount=3,
+                encoding="utf-8",
+            )
+        )
     else:
         handlers.append(logging.StreamHandler(sys.stdout))
 

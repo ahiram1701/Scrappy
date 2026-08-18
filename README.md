@@ -153,6 +153,7 @@ scrappy init                         # crea el .env paso a paso, validando cada 
 scrappy health                       # ffmpeg, estado, Telegram, fuentes
 scrappy fetch --source reddit -n 2   # publica 2 items ahora
 scrappy run                          # bot + scheduler (lo que corre en Docker)
+scrappy autostart --sistema          # que arranque al encender el equipo, sin iniciar sesion
 ```
 
 Si algo no funciona, **empieza siempre por `scrappy doctor`**: no dice solo qué falla, sino cómo arreglarlo.

@@ -339,3 +339,57 @@ async def test_sin_telegram_configurado_no_escucha(
         tui: ScrappyTUI = pilot.app  # type: ignore[assignment]
         assert not tui.can_publish
         assert tui.listener is None
+
+
+# ---------------------------------------------------------------------------
+# Arrancar cuando la red aun no esta
+# ---------------------------------------------------------------------------
+class ListenerTardio:
+    """Un listener que no conecta hasta el intento `bueno`."""
+
+    def __init__(self, bueno: int) -> None:
+        self.bueno = bueno
+        self.intentos = 0
+
+    async def start(self) -> bool:
+        self.intentos += 1
+        return self.intentos >= self.bueno
+
+
+async def test_se_insiste_si_la_red_no_esta_lista_al_iniciar_sesion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El autoarranque se lanza antes de que el wifi este asociado.
+
+    Rendirse al primer intento dejaba a Scrappy sin escuchar hasta el siguiente
+    inicio de sesion: un dia entero de bot mudo por tres segundos de red.
+    """
+    from scrappy import cli
+
+    esperas: list[float] = []
+
+    async def _dormir(segundos: float) -> None:
+        esperas.append(segundos)
+
+    monkeypatch.setattr(cli.asyncio, "sleep", _dormir)
+    listener = ListenerTardio(bueno=3)
+
+    assert await cli._escuchar_con_reintentos(listener)  # type: ignore[arg-type]
+    assert listener.intentos == 3
+    assert len(esperas) == 2
+
+
+async def test_se_acaba_rindiendo_en_vez_de_insistir_para_siempre(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Un token mal escrito no se arregla esperando."""
+    from scrappy import cli
+
+    async def _dormir(_segundos: float) -> None:
+        return None
+
+    monkeypatch.setattr(cli.asyncio, "sleep", _dormir)
+    listener = ListenerTardio(bueno=999)
+
+    assert not await cli._escuchar_con_reintentos(listener)  # type: ignore[arg-type]
+    assert listener.intentos == cli._INTENTOS_CONEXION

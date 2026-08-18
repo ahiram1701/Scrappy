@@ -22,9 +22,15 @@ Ese módulo además redacta las horas en lenguaje corriente — «hoy a las 21:2
 
 `tzlocal` se declara como dependencia directa aunque ya llegue con APScheduler: apoyarse en una transitiva es apoyarse en un detalle de implementación ajeno.
 
-### Una tarea de inicio de sesión
+### Una tarea de inicio de sesión, con un respaldo
 
-Módulo `autostart.py` con `status()`, `enable()` y `disable()`. En Windows registra una tarea con `schtasks`; fuera de Windows detecta que no aplica y remite a la unidad de systemd.
+Módulo `autostart.py` con `status()`, `enable()` y `disable()`. En Windows intenta primero registrar una tarea con `schtasks`; fuera de Windows detecta que no aplica y remite a la unidad de systemd.
+
+**Enmienda 1 (agosto de 2026).** La tarea sola no bastaba. Crear una tarea escribe en la carpeta raíz del Programador, y eso Windows solo se lo permite a un proceso **elevado**. Ser administrador no basta: el token de una sesión normal lleva el grupo de administradores «solo para denegar» hasta que algo pide elevación, y la TUI no la pide. Por eso el botón «Activar» respondía siempre «Acceso denegado» en la máquina donde se probó, que sí es una cuenta de administrador. Se comprobó también con una tarea mínima (`schtasks /Create /TR notepad.exe`) para descartar que fuera el XML: mismo resultado.
+
+**Enmienda 2 (agosto de 2026).** Arrancar al iniciar sesión no es lo que casi nadie quiere: con el equipo encendido y la sesión cerrada, Scrappy no publica. Se añade el modo **`sistema`**, una tarea con `BootTrigger` que corre sin que entre nadie. Eso no tiene respaldo posible —una tarea sin sesión solo se registra elevada— así que el modo pide UAC de forma explícita, con `Start-Process -Verb RunAs`, y dice qué hacer si se rechaza. La identidad es `S4U` («esta cuenta, sin sesión y sin guardar la contraseña») con `SYSTEM` de respaldo en la misma llamada elevada, porque dos diálogos de UAC seguidos para una sola acción se parecen demasiado a algo que no deberías aceptar.
+
+Ahora, cuando el Programador dice que no, se cae a un **acceso directo en la carpeta de Inicio del usuario**, que es suya y no pide permiso a nadie. La tarea se sigue intentando primero porque hace dos cosas que el acceso directo no: retrasa el arranque un minuto y reintenta si el proceso muere. Lo primero se compensa en `scrappy run`, que ahora insiste con Telegram en vez de rendirse al primer intento.
 
 ## Alternativas descartadas
 
@@ -38,7 +44,7 @@ Módulo `autostart.py` con `status()`, `enable()` y `disable()`. En Windows regi
 
 ### Para el autoarranque
 
-**Un acceso directo en la carpeta Inicio.** Es lo más simple, y abre una ventana de consola visible al iniciar sesión, todos los días. Tampoco permite fijar el directorio de trabajo, que aquí importa: `.env` y `config/` se leen relativos a él.
+**Un acceso directo en la carpeta Inicio.** ~~Es lo más simple, y abre una ventana de consola visible al iniciar sesión, todos los días. Tampoco permite fijar el directorio de trabajo, que aquí importa: `.env` y `config/` se leen relativos a él.~~ **Las dos razones eran falsas** y por eso hoy es el respaldo: un `.lnk` que apunta a `pythonw.exe` no abre ninguna ventana, y `WorkingDirectory` es un campo del propio acceso directo. Lo que sí es cierto es lo que se pierde frente a la tarea —el retraso de un minuto y el reintento— y por eso va segundo y no primero.
 
 **Un servicio de Windows.** Corre sin sesión iniciada, que es más de lo que hace falta, y a cambio necesita privilegios de administrador para instalarse y un envoltorio del estilo de NSSM para un proceso Python. Para «que arranque cuando entro a mi equipo» es desproporcionado.
 
@@ -50,8 +56,12 @@ Módulo `autostart.py` con `status()`, `enable()` y `disable()`. En Windows regi
 
 ## Consecuencias
 
-**Buenas.** Las horas del panel, de `/start` y de `/config` se leen sin traducir nada. La zona se detecta sola, así que la mayoría no tiene que configurar nada. El autoarranque no pide administrador y se quita con el mismo botón que lo puso.
+**Buenas.** Las horas del panel, de `/start` y de `/config` se leen sin traducir nada. La zona se detecta sola, así que la mayoría no tiene que configurar nada. El autoarranque funciona sin administrador —por el respaldo— y se quita con el mismo botón que lo puso, que borra los dos mecanismos aunque solo hubiera uno puesto.
 
 **Malas.** `autostart.py` tiene una rama por sistema operativo, y solo una está implementada. Detectar si la tarea existe obliga a **mirar el texto** que devuelve `schtasks`, porque usa el mismo código de salida para «no existe» que para «algo falló»; ese texto viene en el idioma del sistema, así que hay una lista de frases conocidas que puede quedarse corta con otro idioma o versión. Se probó contra un Windows en español y la frase no era la traducción literal de la inglesa, que es justamente por lo que la lista existe.
+
+**A vigilar.** Lo que escribe la tarea del modo `sistema` corre bajo una sesión de inicio distinta de la interactiva, y los workspaces que deje un proceso muerto a mitad **no los puede borrar la sesión del usuario**: `scrappy purge` desde la TUI responde «Acceso denegado». Se comprobó matando la tarea a mitad de una descarga. No pasa en funcionamiento normal —el propio proceso borra su workspace en el `finally`— pero conviene saberlo antes de perseguir un fantasma.
+
+**A vigilar.** El proceso que arranca solo corre con `pythonw.exe`, donde `sys.stdout` es `None`. Cualquier cosa que escriba en la consola o le pregunte por `isatty()` muere ahí, sin ventana donde verlo: es exactamente lo que pasaba, y por eso `configure_logging` manda los logs a `data/scrappy.log` cuando no hay consola. Lo que se escriba en el arranque conviene probarlo lanzándolo sin consola, no desde una terminal.
 
 **A vigilar.** Con el autoarranque activo y el scheduler de la TUI a la vez hay dos procesos publicando. La deduplicación impide repetidos, pero se publica el doble de a menudo; el panel avisa cuando detecta esa combinación.

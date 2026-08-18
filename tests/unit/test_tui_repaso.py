@@ -188,7 +188,11 @@ async def test_ningun_boton_apunta_a_un_id_inexistente(entorno: Path) -> None:
     """
     async with ScrappyTUI(env_path=entorno, show_wizard=False).run_test() as pilot:
         for boton in list(pilot.app.screen.query(Button)):
-            if boton.disabled or boton.id in {"autoarranque-on", "autoarranque-off"}:
+            if boton.disabled or boton.id in {
+                "autoarranque-on",
+                "autoarranque-sistema",
+                "autoarranque-off",
+            }:
                 # Los de autoarranque abren un modal y tocan el sistema; se
                 # prueban con un doble en test_autostart.py
                 continue

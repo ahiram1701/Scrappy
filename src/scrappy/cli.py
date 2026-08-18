@@ -5,6 +5,7 @@
     scrappy fetch --dry-run             ranking sin descargar ni publicar
     scrappy fetch --source reddit -n 2  publica 2 items de Reddit
     scrappy run                         bot + scheduler (lo que corre en Docker)
+    scrappy autostart --sistema         que arranque al encender, sin iniciar sesion
     scrappy whoami                      datos del bot y como obtener el chat id
 
 `fetch --dry-run` es el comando con el que se calibra el proyecto: recorre
@@ -27,11 +28,13 @@ from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
 from scrappy.bot.listener import BotListener
 from scrappy.core.errors import ScrappyError
-from scrappy.observability.logging import configure_logging
+from scrappy.observability.logging import configure_logging, get_logger
 from scrappy.scheduler.jobs import PipelineScheduler
 
 console = Console()
 error_console = Console(stderr=True)
+
+log = get_logger(__name__)
 
 cli = typer.Typer(
     name="scrappy",
@@ -41,8 +44,20 @@ cli = typer.Typer(
 )
 
 
+def _mostrar_error(mensaje: str) -> None:
+    """Ensena un error por donde se pueda leerlo.
+
+    Sin consola -la tarea de autoarranque corre con `pythonw`- `error_console`
+    escribe a la nada, y un fallo de arranque seria un proceso que muere sin
+    dejar rastro en ningun sitio. Ahi el error va tambien al log en fichero.
+    """
+    error_console.print(f"[bold red]Error:[/] {mensaje}")
+    if sys.stdout is None:
+        log.error("cli_error", detalle=mensaje)
+
+
 def _fail(message: str) -> None:
-    error_console.print(f"[bold red]Error:[/] {message}")
+    _mostrar_error(message)
     raise typer.Exit(code=1)
 
 
@@ -189,7 +204,7 @@ def run(
             # El mismo BotListener que usa la TUI. Tenerlo escrito dos veces
             # fue lo que dejo a la interfaz publicando sin escuchar.
             listener = BotListener(app, scheduler)
-            if not await listener.start():
+            if not await _escuchar_con_reintentos(listener):
                 _fail("No se pudo conectar con Telegram. Ejecuta `scrappy doctor`.")
                 return 1
 
@@ -414,6 +429,54 @@ def tui() -> None:
 
 
 # ---------------------------------------------------------------------------
+# autostart
+# ---------------------------------------------------------------------------
+@cli.command()
+def autostart(
+    sistema: Annotated[
+        bool,
+        typer.Option(
+            "--sistema",
+            help="Arranca al encender el equipo, sin iniciar sesion. Pide permiso (UAC).",
+        ),
+    ] = False,
+    sesion: Annotated[
+        bool,
+        typer.Option("--sesion", help="Arranca al iniciar sesion."),
+    ] = False,
+    quitar: Annotated[
+        bool,
+        typer.Option("--quitar", help="Deja de arrancar solo."),
+    ] = False,
+) -> None:
+    """Consulta o cambia el arranque automatico. Sin opciones, solo informa.
+
+    El directorio de trabajo que se registra es este, porque de aqui se leen
+    `.env` y `config/`: ejecutalo desde la carpeta de Scrappy.
+    """
+    from scrappy.autostart import Autoarranque
+
+    if sum((sistema, sesion, quitar)) > 1:
+        _fail("Elige solo una: --sistema, --sesion o --quitar.")
+
+    autoarranque = Autoarranque()
+
+    if sistema:
+        console.print("Windows va a pedir permiso de administrador…")
+        estado = autoarranque.enable("sistema")
+    elif sesion:
+        estado = autoarranque.enable()
+    elif quitar:
+        estado = autoarranque.disable()
+    else:
+        estado = autoarranque.status()
+
+    color = "green" if estado.activo else "yellow"
+    console.print(f"[{color}]{estado.detalle}[/]")
+    raise typer.Exit(code=0 if estado.activo or quitar or not (sistema or sesion) else 1)
+
+
+# ---------------------------------------------------------------------------
 # purge
 # ---------------------------------------------------------------------------
 @cli.command()
@@ -474,12 +537,48 @@ def version() -> None:
 # ---------------------------------------------------------------------------
 # Utilidades
 # ---------------------------------------------------------------------------
+#: Cuantas veces se intenta conectar con Telegram al arrancar, y cuanto se
+#: espera entre intentos. Dos minutos y medio en total: de sobra para que un
+#: portatil recien encendido termine de asociarse al wifi.
+_INTENTOS_CONEXION = 6
+_ESPERA_ENTRE_INTENTOS = 30.0
+
+
+async def _escuchar_con_reintentos(listener: BotListener) -> bool:
+    """Arranca el listener insistiendo un rato antes de rendirse.
+
+    Existe por el autoarranque: al iniciar sesion el proceso se lanza antes de
+    que la red este lista, y rendirse al primer intento dejaba a Scrappy sin
+    escuchar hasta el siguiente inicio de sesion. Insistir cuesta unos minutos
+    de nada y ahorra un dia entero de bot mudo.
+    """
+    for intento in range(1, _INTENTOS_CONEXION + 1):
+        if await listener.start():
+            return True
+
+        if intento < _INTENTOS_CONEXION:
+            log.warning(
+                "bot_listener_reintento",
+                intento=intento,
+                de=_INTENTOS_CONEXION,
+                espera_segundos=_ESPERA_ENTRE_INTENTOS,
+            )
+            console.print(
+                f"[yellow]Sin conexion con Telegram (intento {intento} de "
+                f"{_INTENTOS_CONEXION}). Reintento en "
+                f"{_ESPERA_ENTRE_INTENTOS:.0f}s…[/]"
+            )
+            await asyncio.sleep(_ESPERA_ENTRE_INTENTOS)
+
+    return False
+
+
 def _execute(coro_factory: object) -> int:
     """Ejecuta una corrutina traduciendo los errores del proyecto a codigos de salida."""
     try:
         return int(asyncio.run(coro_factory()))  # type: ignore[operator]
     except ScrappyError as exc:
-        error_console.print(f"[bold red]Error:[/] {exc}")
+        _mostrar_error(str(exc))
         return 1
     except KeyboardInterrupt:
         return 130
@@ -487,10 +586,17 @@ def _execute(coro_factory: object) -> int:
 
 def main() -> None:
     """Punto de entrada del script `scrappy`."""
+    if sys.stdout is None:
+        # Arrancado sin consola: la tarea de autoarranque lanza `pythonw -m
+        # scrappy.cli run`. `ScrappyApp.create` ya configura el logging, pero
+        # lo que falle antes -un `.env` mal escrito, sin ir mas lejos- moriria
+        # sin dejar una sola linea en ningun sitio. Esto lo adelanta.
+        configure_logging()
+
     try:
         cli()
     except ScrappyError as exc:  # pragma: no cover - red de seguridad
-        error_console.print(f"[bold red]Error:[/] {exc}")
+        _mostrar_error(str(exc))
         sys.exit(1)
 
 

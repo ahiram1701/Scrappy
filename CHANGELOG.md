@@ -5,6 +5,25 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido — arrancar sin iniciar sesión
+
+Arrancar al iniciar sesión dejaba fuera el caso que más se quiere: equipo encendido, sesión cerrada, y Scrappy sin publicar. Ahora hay dos modos.
+
+- **Modo `sistema`**: tarea con disparador de arranque, que corre aunque no entre nadie al equipo. Botón «Sin iniciar sesión» en el panel, o `scrappy autostart --sistema`.
+- Corre **como tu cuenta** (`S4U`: sin sesión y sin guardar la contraseña), con `SYSTEM` de respaldo para las cuentas que no admiten S4U. Las dos identidades se intentan en la **misma** llamada elevada: dos diálogos de UAC seguidos para una sola acción se parecen demasiado a algo que no deberías aceptar.
+- Registrarla pide elevación y no hay forma de rodearlo, así que se pide de frente y, si se rechaza, se dice qué se puede hacer sin permisos en vez de fallar en seco. Quitarla vuelve a pedirla.
+- **Nuevo comando `scrappy autostart`** (`--sistema`, `--sesion`, `--quitar`, o sin nada para consultar).
+
+### Arreglado — el arranque automático no arrancaba
+
+Estaba roto de tres formas distintas, y las tres eran invisibles: al no haber ventana, no había dónde ver el error.
+
+- **Moría al segundo de iniciar sesión.** La tarea lanza `pythonw.exe`, que no tiene consola, y ahí `sys.stdout` es `None`: `configure_logging` le preguntaba `isatty()` y reventaba antes de arrancar nada. Ahora, sin consola, los logs se van solos a `data/scrappy.log`, que además **rota a los 5 MB** porque ese proceso no termina nunca.
+- **La tarea no se podía ni crear.** Registrarla escribe en la carpeta raíz del Programador de tareas, y eso Windows solo se lo permite a un proceso **elevado** —ser administrador no basta, porque una sesión normal lleva el grupo desactivado hasta que algo pide elevación—. La TUI no la pide, así que «Activar» respondía siempre «Acceso denegado». Se añade un respaldo: un acceso directo en la **carpeta de Inicio del usuario**, que arranca lo mismo sin pedir permiso a nadie. Se sigue intentando la tarea primero, que es mejor cuando se puede. «Desactivar» quita los dos.
+- **Se rendía si la red no estaba lista.** `scrappy run` daba por perdida la conexión con Telegram al primer intento, justo el momento en que un equipo recién encendido aún no tiene wifi: un día entero de bot mudo. Ahora insiste seis veces cada 30 segundos.
+
+Además, los errores del CLI se escriben también en el log cuando no hay consola, la tarea reintenta si el proceso se cae, y las rutas del XML van escapadas. Ver [ADR-0012](docs/adr/0012-zona-horaria-y-autoarranque.md), enmendada con lo que se comprobó.
+
 ### Añadido — revisión de la experiencia de uso
 
 Configurar el bot por primera vez costó varias rondas de depuración por dos erratas que ninguna herramienta detectaba. Esto las convierte en mensajes que dicen qué hacer, y amplía lo que se puede manejar sin editar ficheros a mano.

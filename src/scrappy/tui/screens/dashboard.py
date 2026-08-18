@@ -58,7 +58,8 @@ class DashboardScreen(Screen[None]):
                 yield Static("Arranque automatico", classes="seccion-titulo")
                 yield Static(id="estado-autoarranque")
                 with Horizontal(id="acciones-autoarranque"):
-                    yield Button("Activar", id="autoarranque-on", variant="success")
+                    yield Button("Al iniciar sesion", id="autoarranque-on", variant="success")
+                    yield Button("Sin iniciar sesion", id="autoarranque-sistema", variant="primary")
                     yield Button("Desactivar", id="autoarranque-off")
             with Vertical(classes="seccion"):
                 yield Static("Configuracion", classes="seccion-titulo")
@@ -136,8 +137,13 @@ class DashboardScreen(Screen[None]):
         self.query_one("#estado-autoarranque", Static).update("\n".join(lineas))
 
         activar = self.query_one("#autoarranque-on", Button)
+        sin_sesion = self.query_one("#autoarranque-sistema", Button)
         desactivar = self.query_one("#autoarranque-off", Button)
+
         activar.disabled = not estado.disponible or estado.activo
+        # «Sin iniciar sesion» sigue disponible con el de sesion puesto: es un
+        # ascenso, no un duplicado, y sustituye la misma tarea.
+        sin_sesion.disabled = not estado.disponible or estado.modo == "sistema"
         desactivar.disabled = not estado.disponible or not estado.activo
 
     def _refresh_config(self, scrappy: object) -> None:
@@ -226,8 +232,8 @@ class DashboardScreen(Screen[None]):
             await self.refresh_data()
             return
 
-        if event.button.id in {"autoarranque-on", "autoarranque-off"}:
-            await self._cambiar_autoarranque(activar=event.button.id == "autoarranque-on")
+        if event.button.id in {"autoarranque-on", "autoarranque-sistema", "autoarranque-off"}:
+            await self._cambiar_autoarranque(boton=event.button.id)
             return
 
         scrappy = self.tui.require_scrappy()
@@ -264,38 +270,60 @@ class DashboardScreen(Screen[None]):
         self._refresh_scheduler()
         self._refresh_autoarranque()
 
-    async def _cambiar_autoarranque(self, *, activar: bool) -> None:
-        """Registra o quita la tarea del sistema, confirmando antes.
+    async def _cambiar_autoarranque(self, *, boton: str) -> None:
+        """Registra o quita el arranque automatico, confirmando antes.
 
         Se confirma porque esto toca el Programador de tareas de Windows, que
         esta fuera de este proyecto: quien lo pulse tiene que saber que se le
         queda algo instalado y como quitarlo.
         """
-        if activar:
-            titulo, boton = "Arrancar Scrappy al iniciar sesion", "Activar"
+        if boton == "autoarranque-sistema":
+            titulo, texto_boton = "Arrancar sin iniciar sesion", "Activar"
             detalle = (
-                "Se creara una tarea llamada «Scrappy» en el Programador de tareas "
-                "de Windows.\n\n"
+                "Scrappy arrancara al encender el equipo, aunque no entre nadie. Es "
+                "la unica forma de que publique con el equipo encendido y la sesion "
+                "cerrada.\n\n"
+                "Windows te va a pedir permiso de administrador (UAC): una tarea que "
+                "corre sin sesion solo se puede crear elevada. Se registra con tu "
+                "propia cuenta y sin guardar tu contrasena.\n\n"
+                "Para quitarlo: «Desactivar», que volvera a pedirtelo."
+            )
+        elif boton == "autoarranque-on":
+            titulo, texto_boton = "Arrancar Scrappy al iniciar sesion", "Activar"
+            detalle = (
                 "Al iniciar sesion arrancara el bot y el scheduler en segundo plano, "
-                "sin ventana. No hace falta administrador.\n\n"
-                "Para quitarla: este mismo boton, o «schtasks /Delete /TN Scrappy /F»."
+                "sin ventana. Mientras nadie entre al equipo, no publicara.\n\n"
+                "Se intentara con una tarea llamada «Scrappy» en el Programador de "
+                "tareas de Windows. Sin elevacion no se puede crear -y esta ventana no "
+                "la tiene- asi que lo normal es que se ponga un acceso directo "
+                "«Scrappy» en tu carpeta de Inicio, que arranca lo mismo.\n\n"
+                "Para quitarlo: este mismo boton."
             )
         else:
-            titulo, boton = "Dejar de arrancar solo", "Desactivar"
+            titulo, texto_boton = "Dejar de arrancar solo", "Desactivar"
             detalle = (
-                "Se borrara la tarea «Scrappy» del Programador de tareas.\n\n"
+                "Se quitaran los dos: la tarea «Scrappy» del Programador de tareas y "
+                "el acceso directo «Scrappy» de tu carpeta de Inicio.\n\n"
+                "Si estaba puesto «sin iniciar sesion», Windows pedira permiso de "
+                "administrador para quitar la tarea.\n\n"
                 "Scrappy volvera a publicar solo mientras lo tengas abierto. Si ahora "
                 "mismo hay uno corriendo de fondo, seguira hasta que cierres la sesion."
             )
 
-        if not await self.app.push_screen_wait(ConfirmModal(titulo, detalle, boton)):
+        if not await self.app.push_screen_wait(ConfirmModal(titulo, detalle, texto_boton)):
             return
 
         autoarranque = self.tui.autoarranque
-        estado = autoarranque.enable() if activar else autoarranque.disable()
+        match boton:
+            case "autoarranque-sistema":
+                estado = autoarranque.enable("sistema")
+            case "autoarranque-on":
+                estado = autoarranque.enable()
+            case _:
+                estado = autoarranque.disable()
 
         self.tui.set_status(estado.detalle)
         # Si se pidio activar y no quedo activo, el detalle lleva el motivo.
-        if activar and not estado.activo:
+        if boton != "autoarranque-off" and not estado.activo:
             self.notify(estado.detalle, severity="error", timeout=15)
         self._refresh_autoarranque()

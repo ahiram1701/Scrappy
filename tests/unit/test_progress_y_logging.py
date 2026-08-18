@@ -7,6 +7,7 @@ exactamente igual que antes. Eso es justo lo que se verifica aqui.
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 import pytest
@@ -172,6 +173,41 @@ def test_sin_log_file_sigue_yendo_a_stdout(capsys: pytest.CaptureFixture[str]) -
     get_logger("prueba").info("evento_en_consola")
 
     assert "evento_en_consola" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Sin consola: el autoarranque
+# ---------------------------------------------------------------------------
+def test_sin_consola_no_revienta_y_deja_los_logs_en_fichero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """El fallo que dejaba el autoarranque muerto en el arranque.
+
+    La tarea de inicio de sesion lanza `pythonw.exe`, que no tiene consola: ahi
+    `sys.stdout` es None y preguntarle `isatty()` levantaba un `AttributeError`
+    antes de que arrancara nada. Scrappy moria al segundo de iniciar sesion,
+    sin ventana donde verlo y sin una linea de log en ningun sitio.
+    """
+    destino = tmp_path / "scrappy.log"
+    monkeypatch.setattr("scrappy.observability.logging.LOG_SIN_CONSOLA", destino)
+    monkeypatch.setattr(sys, "stdout", None)
+
+    configure_logging("INFO", "console")
+    get_logger("prueba").info("arranque_sin_consola")
+    logging.shutdown()
+
+    assert destino.exists()
+    assert "arranque_sin_consola" in destino.read_text(encoding="utf-8")
+
+
+def test_el_log_en_fichero_rota_y_no_se_come_el_disco(tmp_path: Path) -> None:
+    """El proceso del autoarranque no termina nunca: sin rotar, crece sin fin."""
+    from logging.handlers import RotatingFileHandler
+
+    configure_logging("INFO", "console", log_file=tmp_path / "scrappy.log")
+
+    manejadores = logging.getLogger().handlers
+    assert any(isinstance(m, RotatingFileHandler) for m in manejadores)
 
 
 def test_los_secretos_se_siguen_redactando_en_fichero(tmp_path: Path) -> None:
