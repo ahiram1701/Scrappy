@@ -82,6 +82,9 @@ class Settings(BaseSettings):
     max_download_mb: PositiveInt = 60
 
     # -- Scheduler ----------------------------------------------------------
+    #: Avisar por Telegram al arrancar. Va a los administradores, nunca al
+    #: canal: es informacion de operacion, no contenido.
+    notify_on_start: bool = True
     schedule_enabled: bool = True
     schedule_interval_minutes: PositiveInt = 180
     items_per_run: PositiveInt = 5

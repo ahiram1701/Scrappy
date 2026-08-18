@@ -5,6 +5,15 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido — aviso por Telegram al arrancar
+
+Con el arranque automático puesto, Scrappy se levanta sin ventana y sin nadie mirando: saber si había arrancado obligaba a abrir el log o a preguntarle con `/start`, que es justo lo que uno no quiere hacer después de reiniciar. Ahora escribe él.
+
+- El aviso dice **cuándo arrancó** y **cuándo publicará** — las dos preguntas que uno se hace al verlo— y avisa si arrancó sin escuchar comandos.
+- **Va a `SCRAPPY_TELEGRAM_ADMIN_IDS`, nunca al canal.** El canal es para el contenido; un «he arrancado» por cada reinicio sería ruido en un sitio público.
+- No puede tumbar el arranque: si un administrador nunca le ha escrito al bot —Telegram no deja empezar la conversación desde el otro lado— queda en el log y los demás avisos salen igual.
+- Se apaga con `SCRAPPY_NOTIFY_ON_START=false` o desde la pestaña de configuración de la TUI.
+
 ### Añadido — arrancar sin iniciar sesión
 
 Arrancar al iniciar sesión dejaba fuera el caso que más se quiere: equipo encendido, sesión cerrada, y Scrappy sin publicar. Ahora hay dos modos.

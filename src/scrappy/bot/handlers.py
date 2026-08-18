@@ -76,12 +76,12 @@ def _scheduler(context: ContextTypes.DEFAULT_TYPE) -> SchedulerProtocol | None:
     return context.bot_data.get("scheduler")
 
 
-def _linea_scheduler(app: ScrappyApp, scheduler: SchedulerProtocol | None) -> str:
+def linea_scheduler(app: ScrappyApp, scheduler: SchedulerProtocol | None) -> str:
     """Que va a publicar y cuando, en una o dos lineas.
 
-    Lo comparten `/start` y `/health`. Sin scheduler registrado se dice la
-    cadencia y no la hora: prometer una hora que no se puede consultar seria
-    peor que no darla.
+    Lo comparten `/start`, `/health` y el aviso de arranque. Sin scheduler
+    registrado se dice la cadencia y no la hora: prometer una hora que no se
+    puede consultar seria peor que no darla.
     """
     if not app.settings.schedule_enabled:
         return "El scheduler esta desactivado: solo publicare con /fetch."
@@ -156,7 +156,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Cadencia, zona horaria y la hora de la proxima ronda. La zona va aqui
     # porque «me publico de madrugada» es la queja tipica, y verla desde el
     # primer mensaje la explica sin tener que buscarla.
-    lineas.append(f"\n{_linea_scheduler(app, _scheduler(context))}")
+    lineas.append(f"\n{linea_scheduler(app, _scheduler(context))}")
 
     lineas.append("\nEscribe / para ver todo lo que puedo hacer.")
 
@@ -320,7 +320,7 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await message.reply_text(
         f"<b>{header}</b>\n<pre>{html.escape(report.render())}</pre>\n"
         # Fuera del <pre>: lleva negrita y no es salida de diagnostico.
-        f"{_linea_scheduler(app, _scheduler(context))}",
+        f"{linea_scheduler(app, _scheduler(context))}",
         parse_mode=ParseMode.HTML,
     )
 

@@ -48,6 +48,7 @@ Todas llevan el prefijo `SCRAPPY_`. Se leen de `.env` o de variables reales del 
 
 | Variable | Defecto | Descripción |
 |---|---|---|
+| `NOTIFY_ON_START` | `true` | Avisa por Telegram al arrancar. Va a `TELEGRAM_ADMIN_IDS`, nunca al canal. |
 | `SCHEDULE_ENABLED` | `true` | Si `false`, solo funciona `/fetch`. |
 | `SCHEDULE_INTERVAL_MINUTES` | `180` | Cada cuánto se ejecuta el pipeline. |
 | `ITEMS_PER_RUN` | `5` | Máximo de publicaciones por ejecución. |

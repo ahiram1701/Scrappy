@@ -26,6 +26,7 @@ from rich.table import Table
 
 from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
+from scrappy.bot.avisos import avisar_arranque
 from scrappy.bot.listener import BotListener
 from scrappy.core.errors import ScrappyError
 from scrappy.observability.logging import configure_logging, get_logger
@@ -197,6 +198,7 @@ def run(
             scheduler.start()
 
             if no_bot:
+                await avisar_arranque(app, scheduler, escuchando=False)
                 console.print("[green]Scheduler en marcha.[/] Ctrl+C para parar.")
                 await asyncio.Event().wait()  # espera indefinida
                 return 0
@@ -209,6 +211,9 @@ def run(
                 return 1
 
             try:
+                # Despues de arrancar del todo, para que el aviso pueda decir
+                # la verdad sobre si escucha comandos y cuando es la ronda.
+                await avisar_arranque(app, scheduler)
                 console.print("[green]Bot y scheduler en marcha.[/] Ctrl+C para parar.")
                 await asyncio.Event().wait()
             finally:

@@ -116,6 +116,14 @@ CONTENT_FIELDS = (
 )
 
 SCHEDULE_FIELDS = (
+    EnvField(
+        "SCRAPPY_NOTIFY_ON_START",
+        "Avisar al arrancar",
+        "Te escribe por Telegram cuando Scrappy arranca. Util con el arranque "
+        "automatico, que se levanta sin ventana: es como saber que sigue vivo "
+        "despues de reiniciar sin mirar el log. Va a los administradores.",
+        kind=FieldKind.BOOL,
+    ),
     EnvField("SCRAPPY_SCHEDULE_ENABLED", "Scheduler activo", kind=FieldKind.BOOL),
     EnvField(
         "SCRAPPY_SCHEDULE_INTERVAL_MINUTES",
