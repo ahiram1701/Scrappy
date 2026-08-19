@@ -129,9 +129,19 @@ class Pipeline:
 
         El scorer se rehace ademas en cada ronda para releer los votos en
         contra, asi que el 👎 nunca tuvo ese problema. Esta es la otra mitad.
+
+        Los adapters se refrescan aqui por lo mismo, y costo verlo porque el
+        sintoma era el contrario del esperado: cambiar los subreddits «no hacia
+        nada» aunque el catalogo si se releia. Cada adapter guarda su
+        `SourceConfig` del arranque y de la relectura solo se aprovechaba el
+        `budget`, asi que la TUI decia «Se aplica en la proxima ronda» y no era
+        verdad para lo unico que la gente cambia a menudo: de donde sacar el
+        contenido.
         """
         self._sources_config = config
         self._filter = CandidateFilter(self._settings, config.filters)
+        for adapter in self._adapters:
+            adapter.config = config.for_source(adapter.name)
 
     def _releer_catalogo(self) -> None:
         """Relee `sources.yaml` del disco antes de cada ronda.

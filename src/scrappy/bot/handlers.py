@@ -16,24 +16,37 @@ from typing import Protocol
 
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from scrappy.app import ScrappyApp
+from scrappy.autostart import Autoarranque
 from scrappy.bot.auth import admin_only, parse_args
 from scrappy.bot.callbacks import on_callback
-from scrappy.bot.keyboards import menu_fetch, menu_stats
+from scrappy.bot.callbacks_fuentes import on_respuesta
+from scrappy.bot.keyboards import menu_fetch, menu_fuentes, menu_stats
+from scrappy.bot.recarga import CLAVE as CLAVE_RECARGA
+from scrappy.bot.recarga import Recargador
 from scrappy.core.models import utcnow
+from scrappy.core.tiempo import formato_local, formato_relativo
 from scrappy.diagnostics import run_diagnostics
 from scrappy.download.workspace import iter_active, purge_active
 from scrappy.observability.logging import get_logger
-from scrappy.sources.registry import iter_adapter_names
+from scrappy.sources.registry import iter_adapter_names, requiere_ack_de_tos
 
 log = get_logger(__name__)
 
 _HELP = """<b>Scrappy</b> — curador de videos cortos y memes
 
+/status — como esta Scrappy, de un vistazo
 /fetch [fuente] [n] — busca y publica ahora mismo
-/sources — estado de cada fuente
+/sources — estado de cada fuente, y configurarlas
 /stats [dias] — que se ha publicado
 /pause · /resume — para y reanuda el scheduler
 /config — configuracion efectiva (sin secretos)
@@ -236,9 +249,118 @@ async def cmd_sources(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     message = update.effective_message
     if message is None:
         return
-    statuses = await _app(context).source_statuses()
+    app = _app(context)
+    statuses = await app.source_statuses()
     body = "\n".join(f"· {html.escape(status.render())}" for status in statuses)
-    await message.reply_text(f"<b>Fuentes</b>\n{body}", parse_mode=ParseMode.HTML)
+    # El teclado es la puerta a configurarlas. El texto sigue siendo el de
+    # siempre: quien solo venia a mirar no tiene que leer nada nuevo.
+    estados = [
+        (
+            s.name,
+            s.enabled,
+            requiere_ack_de_tos(s.name, app.settings) and not app.settings.enable_tos_risky_sources,
+        )
+        for s in statuses
+    ]
+    await message.reply_text(
+        f"<b>Fuentes</b>\n{body}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=menu_fuentes(estados),
+    )
+
+
+def _motivo(detalle: str) -> str:
+    """La primera frase del detalle de una fuente, que es la que dice que falta.
+
+    El resto suele ser como arreglarlo -URL incluida- y eso es trabajo de
+    `/sources` y de `/start`, no de un resumen.
+    """
+    primera = detalle.split(". ")[0].strip()
+    return primera if len(primera) <= 70 else f"{primera[:67]}…"
+
+
+async def texto_status(app: ScrappyApp, scheduler: SchedulerProtocol | None) -> str:
+    """Todo el estado en un mensaje. Separado del handler para poder probarlo.
+
+    El orden no es casual: contesta de arriba abajo las preguntas segun lo
+    urgentes que sean. Primero «esta vivo?», luego «va a publicar?», luego
+    «publico algo?» y al final «que le falta?». Quien mira esto desde el movil
+    despues de reiniciar el equipo casi siempre se queda en la primera linea.
+    """
+    desde = formato_local(app.arrancado_en, app.settings.tzinfo)
+    hace = formato_relativo(app.arrancado_en - utcnow())
+    lineas = [f"<b>Scrappy</b> · en marcha desde {html.escape(desde)} ({html.escape(hace)})"]
+
+    # Como arranco. Solo en Windows: fuera de ahi el autoarranque es systemd y
+    # esto no sabe nada de el, y una linea vacia confunde mas que ayudar.
+    autoarranque = Autoarranque().status()
+    if autoarranque.disponible and autoarranque.activo:
+        cual = (
+            "al encender el equipo, sin iniciar sesion"
+            if autoarranque.modo == "sistema"
+            else "al iniciar sesion"
+        )
+        lineas.append(f"Arranque automatico: {cual}")
+
+    lineas.append("")
+    lineas.append(linea_scheduler(app, scheduler))
+
+    ultima = app.ultima_ronda
+    if ultima is None:
+        lineas.append("Ultima ronda: aun no ha corrido ninguna.")
+    else:
+        marca = "" if ultima.correcta else "⚠️ "
+        lineas.append(
+            f"{marca}Ultima ronda: {html.escape(formato_local(ultima.cuando, app.settings.tzinfo))}"
+            f" — {html.escape(ultima.resumen)}"
+        )
+
+    hoy = await app.state.stats(since=utcnow() - timedelta(days=1))
+    semana = await app.state.stats(since=utcnow() - timedelta(days=7))
+    total = await app.state.total_published()
+    lineas.append("")
+    lineas.append(
+        f"Publicado · hoy {sum(hoy.values())} · 7 dias {sum(semana.values())} · historico {total}"
+    )
+
+    statuses = await app.source_statuses()
+    listas = [s.name for s in statuses if s.usable]
+    lineas.append(
+        f"Fuentes listas ({len(listas)}): {html.escape(', '.join(listas))}"
+        if listas
+        else "⚠️ Ninguna fuente lista: no se va a publicar nada."
+    )
+
+    # Solo las que estan a medias. Las apagadas a proposito no son un problema
+    # que haya que ensenar cada vez.
+    a_medias = [s for s in statuses if s.enabled and not s.configured]
+    if a_medias:
+        # Solo el motivo, no las instrucciones: el `detail` de imgur o giphy
+        # trae la URL donde sacar la clave y el limite del plan gratuito, que
+        # esta muy bien en `/sources` y aqui convierte el resumen en un muro.
+        detalle = "; ".join(f"{s.name} ({_motivo(s.detail)})" for s in a_medias)
+        lineas.append(f"Por revisar ({len(a_medias)}): {html.escape(detalle)}")
+
+    activos = len(list(iter_active()))
+    detalle = "limpio" if activos == 0 else "hay descargas en curso"
+    lineas.append(f"Workspaces activos: {activos} ({detalle})")
+
+    return "\n".join(lineas)
+
+
+@admin_only
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """`/status` — todo el estado de un vistazo.
+
+    Existe porque saberlo obligaba a encadenar `/start`, `/health`, `/sources`
+    y `/stats`, y desde el movil eso es cuatro mensajes para responder a «sigue
+    vivo?». Los cuatro se quedan para el detalle; este es el resumen.
+    """
+    message = update.effective_message
+    if message is None:
+        return
+    texto = await texto_status(_app(context), _scheduler(context))
+    await message.reply_text(texto, parse_mode=ParseMode.HTML)
 
 
 @admin_only
@@ -357,6 +479,8 @@ def register_handlers(
     application: Application,  # type: ignore[type-arg]
     app: ScrappyApp,
     scheduler: SchedulerProtocol | None = None,
+    *,
+    recargador: Recargador | None = None,
 ) -> None:
     """Conecta los comandos y deja `ScrappyApp` accesible en `bot_data`.
 
@@ -366,14 +490,19 @@ def register_handlers(
             dicen cada cuanto, pero la hora concreta solo la sabe quien tiene
             el job programado. `scrappy run --no-bot` no pasa por aqui, y en
             los tests no siempre hay uno.
+        recargador: como pedir que Scrappy se reconstruya, para los cambios
+            del `.env` que no se aplican de otra forma. Sin el, quien lo
+            necesite responde que el cambio se aplicara al reiniciar.
     """
     application.bot_data["scrappy_app"] = app
     application.bot_data["admin_ids"] = app.settings.admin_ids
     application.bot_data["scheduler"] = scheduler
+    application.bot_data[CLAVE_RECARGA] = recargador
 
     application.add_handler(CommandHandler("start", cmd_start))
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("fetch", cmd_fetch))
+    application.add_handler(CommandHandler("status", cmd_status))
     application.add_handler(CommandHandler("sources", cmd_sources))
     application.add_handler(CommandHandler("stats", cmd_stats))
     application.add_handler(CommandHandler("pause", cmd_pause))
@@ -382,6 +511,12 @@ def register_handlers(
     application.add_handler(CommandHandler("health", cmd_health))
     application.add_handler(CommandHandler("purge", cmd_purge))
     application.add_handler(CallbackQueryHandler(on_callback))
+    # El unico MessageHandler del bot. `filters.REPLY` es lo que impide que se
+    # trague la conversacion entera: solo mira respuestas, y de esas solo actua
+    # sobre las que contestan a una pregunta suya.
+    application.add_handler(
+        MessageHandler(filters.REPLY & filters.TEXT & ~filters.COMMAND, on_respuesta)
+    )
     application.add_error_handler(on_error)
 
     # Registra el menu nativo al arrancar: es lo que hace que Telegram
@@ -398,6 +533,7 @@ def register_handlers(
 #: Lo que Telegram muestra al escribir «/». El orden es el de uso esperado, no
 #: alfabetico: primero lo que se usa a diario.
 _MENU = [
+    ("status", "Como esta Scrappy"),
     ("start", "Comprobar que todo funciona"),
     ("fetch", "Buscar y publicar ahora"),
     ("sources", "Estado de cada fuente"),

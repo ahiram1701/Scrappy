@@ -26,6 +26,7 @@ from textual.widgets import Footer, Header, Static
 from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
 from scrappy.autostart import Autoarranque
+from scrappy.bot.avisos import avisar_arranque
 from scrappy.bot.listener import BotListener
 from scrappy.config.settings import Settings
 from scrappy.diagnostics import run_diagnostics
@@ -161,7 +162,9 @@ class ScrappyTUI(App[None]):
         )
 
         try:
-            scrappy = await ScrappyApp.create(settings, with_publisher=self.can_publish)
+            scrappy = await ScrappyApp.create(
+                settings, with_publisher=self.can_publish, env_path=self.env_path
+            )
         except Exception as exc:
             log.exception("tui_boot_failed", error=str(exc))
             self.set_status(f"Error al arrancar: {exc}")
@@ -182,11 +185,40 @@ class ScrappyTUI(App[None]):
         if self.scrappy is None or not self.can_publish or not self._escuchar:
             return
 
-        self.listener = BotListener(self.scrappy, self.scheduler, on_conflict=self._aviso_conflicto)
+        self.listener = BotListener(
+            self.scrappy,
+            self.scheduler,
+            on_conflict=self._aviso_conflicto,
+            recargador=self._recarga_pedida_por_telegram,
+        )
         if await self.listener.start():
             log.info("tui_escuchando_telegram")
         else:
             self.listener = None
+
+    def _recarga_pedida_por_telegram(self, motivo: str) -> bool:
+        """Alguien cambio un ajuste desde el movil con la TUI abierta.
+
+        Se encola en vez de recargar aqui mismo, y no es un detalle de estilo:
+        esto lo llama un handler del bot, y recargar para el listener que lo
+        esta ejecutando. Awaitarlo seria esperarse a si mismo.
+
+        La recarga es la de siempre -la del boton «Recargar» del panel-, asi
+        que la pantalla se sincroniza sola y no hay una segunda forma de
+        recargar que mantener al dia.
+        """
+        self.call_later(self._recargar_y_avisar, motivo)
+        return True
+
+    async def _recargar_y_avisar(self, motivo: str) -> None:
+        """Recarga y lo cuenta por los dos sitios: la pantalla y Telegram."""
+        self.set_status(f"Recargando: {motivo}…")
+        if not await self.recargar():
+            return
+
+        self.set_status(f"Recargado: {motivo}")
+        if self.scrappy is not None:
+            await avisar_arranque(self.scrappy, self.scheduler, motivo=motivo)
 
     def _aviso_conflicto(self, motivo: str) -> None:
         """Otro Scrappy esta escuchando con el mismo token.

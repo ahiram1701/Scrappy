@@ -5,6 +5,21 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido — administrar Scrappy desde el móvil
+
+Con el arranque automático puesto, Scrappy corre sin ventana y el móvil es el único sitio desde donde se le habla. Le faltaba lo esencial: ver cómo está y poder tocar las fuentes.
+
+- **`/status`**: en marcha desde cuándo, cómo arrancó, próxima ronda, **qué hizo la última** (o qué falló), publicado, fuentes listas y qué falta. Lo que antes obligaba a encadenar cuatro comandos. Los cinco de siempre se quedan para el detalle.
+- **Configurar las fuentes con botones**: encender y apagar cada una, y editar de dónde saca el contenido —subreddits, comunidades, búsquedas, hashtags, cuentas—. Para añadir, el bot te pregunta y tú respondes a su mensaje.
+- Se acepta lo que uno escribe de verdad (`r/memes`, `#gatos`, una URL de Reddit pegada) y se guarda limpio; lo que no sirve se rechaza diciendo por qué.
+- **Los orígenes se aplican al momento**; el interruptor vive en el `.env` y **recarga Scrappy solo**, avisándote cuando vuelve. Si no hay quien recargue, lo dice en vez de prometerlo.
+- **Las fuentes tras el aviso legal no se activan desde el móvil.** El botón responde explicando qué hace falta, y no escribe nada: un consentimiento que se da sin leer no es un consentimiento.
+- Tus comentarios de `sources.yaml` sobreviven a cualquier edición.
+
+### Arreglado — cambiar los subreddits no se aplicaba hasta reiniciar
+
+El pipeline releía `sources.yaml` en cada ronda, pero cada adaptador se quedaba con la copia que recibió al arrancar y solo se le refrescaba el `budget`. Cambiar de dónde saca el contenido —lo único que se toca a menudo— no surtía efecto hasta reconstruir la aplicación, **mientras la TUI decía «Se aplica en la proxima ronda»**. Ahora el catálogo refresca también a los adaptadores y la frase es cierta.
+
 ### Añadido — aviso por Telegram al arrancar
 
 Con el arranque automático puesto, Scrappy se levanta sin ventana y sin nadie mirando: saber si había arrancado obligaba a abrir el log o a preguntarle con `/start`, que es justo lo que uno no quiere hacer después de reiniciar. Ahora escribe él.

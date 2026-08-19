@@ -30,6 +30,7 @@ from telegram.ext import Application, ApplicationBuilder
 
 from scrappy.app import ScrappyApp
 from scrappy.bot.handlers import SchedulerProtocol, register_handlers
+from scrappy.bot.recarga import Recargador
 from scrappy.observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -47,16 +48,22 @@ class BotListener:
         scheduler: SchedulerProtocol | None = None,
         *,
         on_conflict: Callable[[str], None] | None = None,
+        recargador: Recargador | None = None,
     ) -> None:
         """
         Args:
             on_conflict: se llama si otro proceso esta escuchando con el mismo
                 token. La TUI lo usa para avisar por pantalla; sin el, solo
                 queda en el log.
+            recargador: como pedir que Scrappy se reconstruya. Se pasa aqui y
+                no se guarda en un sitio global porque cada listener nuevo
+                estrena su propio `bot_data`: quien monta el listener es quien
+                sabe como se recarga a si mismo.
         """
         self._app = app
         self._scheduler = scheduler
         self._on_conflict = on_conflict
+        self._recargador = recargador
         self._application: Application | None = None  # type: ignore[type-arg]
         #: Motivo por el que dejo de escuchar, si dejo de hacerlo.
         self.conflicto: str | None = None
@@ -77,7 +84,7 @@ class BotListener:
 
         try:
             application = ApplicationBuilder().token(token).build()
-            register_handlers(application, self._app, self._scheduler)
+            register_handlers(application, self._app, self._scheduler, recargador=self._recargador)
 
             await application.initialize()
             await application.start()

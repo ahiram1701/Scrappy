@@ -11,6 +11,7 @@ Todo lo que Scrappy hace desde el móvil: cada comando, cada menú y cada botón
 - [La primera vez: `/start`](#la-primera-vez-start)
 - [Comandos](#comandos)
 - [Los menús de botones](#los-menús-de-botones)
+- [Configurar las fuentes desde el móvil](#configurar-las-fuentes-desde-el-móvil)
 - [Los botones bajo cada publicación](#los-botones-bajo-cada-publicación)
 - [El menú nativo de Telegram](#el-menú-nativo-de-telegram)
 - [Cuando algo falla](#cuando-algo-falla)
@@ -99,6 +100,36 @@ Las incidencias no son fallos del comando: una fuente puede caerse y las demás 
 
 ---
 
+### `/status` — cómo está Scrappy, de un vistazo
+
+Lo que antes obligaba a encadenar `/start`, `/health`, `/sources` y `/stats`. Es el comando para el móvil: responde de arriba abajo, de lo más urgente a lo menos.
+
+```
+Scrappy · en marcha desde hoy a las 03:12 (hace 2 h)
+Arranque automatico: al encender el equipo, sin iniciar sesion
+
+Publicare 5 items cada 240 minutos, en horario de America/Mexico_City.
+Proxima ronda: hoy a las 07:12.
+Ultima ronda: hoy a las 03:13 — run descubiertos=47 published=3 en 22.4s
+
+Publicado · hoy 3 · 7 dias 21 · historico 218
+Fuentes listas (2): reddit, lemmy
+Por revisar (2): imgur (falta SCRAPPY_IMGUR_CLIENT_ID); giphy (falta SCRAPPY_GIPHY_API_KEY)
+Workspaces activos: 0 (limpio)
+```
+
+| Línea | Qué te dice |
+|---|---|
+| **En marcha desde** | Si el proceso sobrevivió al último reinicio. Con el arranque automático no hay ventana que mirar, así que es la única forma de saberlo |
+| **Arranque automático** | Cómo está configurado que arranque. Se omite si no está puesto, y fuera de Windows |
+| **Última ronda** | Qué publicó la última vez, o **qué falló**. Un ⚠️ delante significa que reventó: no se enseña el último éxito como si fuera el estado actual |
+| **Publicado** | Hoy, últimos 7 días y total |
+| **Por revisar** | Fuentes encendidas a las que les falta algo, con el motivo recortado. El detalle completo está en `/sources` |
+
+La diferencia con `/start`: `/start` es un diagnóstico de la configuración —comprueba credenciales, ffmpeg, a qué chat publica— y `/status` es el parte de cómo va. Se consulta `/start` una vez, al configurar, y `/status` a diario.
+
+---
+
 ### `/sources` — estado de cada fuente
 
 Las nueve fuentes, activas o no, con el motivo cuando no lo están.
@@ -114,6 +145,8 @@ Fuentes
 ```
 
 La distinción importa: **desactivada** es una decisión tuya; **activada pero sin configurar** es algo a medio hacer, y esa fuente no va a aportar nada aunque su interruptor esté encendido.
+
+Debajo del texto vienen las nueve fuentes como botones, que es la puerta a configurarlas sin tocar el equipo. Ver [Configurar las fuentes desde el móvil](#configurar-las-fuentes-desde-el-móvil).
 
 ---
 
@@ -249,6 +282,53 @@ Se puede pulsar varias veces sobre el mismo mensaje para comparar rangos: cada p
 ### Cancelar
 
 Los menús de `/fetch` llevan **Cancelar**, que reemplaza el mensaje por «Cancelado.» y no hace nada más. `/stats` no lo lleva porque solo lee.
+
+---
+
+## Configurar las fuentes desde el móvil
+
+Se entra por los botones de `/sources`. Tres pantallas, y cada una se **relee del fichero** antes de pintarse: los botones llevan posiciones, no nombres —un `callback_data` no pasa de 64 bytes y una consulta de Bluesky ocupa ella sola más de la mitad— así que un menú abierto hace media hora podría apuntar a un sitio que ya cambió.
+
+**1. Las fuentes.** El icono dice en qué situación está cada una:
+
+```
+┌──────────────┬──────────────┐
+│  ✅ reddit   │  ✅ lemmy    │
+├──────────────┼──────────────┤
+│  ⚪ giphy    │  🔒 youtube  │
+└──────────────┴──────────────┘
+```
+
+| Icono | Qué significa |
+|---|---|
+| ✅ | Encendida |
+| ⚪ | Apagada por decisión tuya |
+| 🔒 | Detrás del aviso legal: incumple los términos de su plataforma |
+
+**2. La ficha.** El estado de esa fuente, el interruptor y un botón por cada campo de contenido, con cuántos valores tiene: `subreddits (8)`, `busquedas (3)`.
+
+**3. Los orígenes.** Un botón ❌ por valor para quitarlo, y ➕ para añadir. Quitar **pregunta antes** y enseña el valor releído del fichero; si la lista se quedara vacía, lo avisa.
+
+Para **añadir**, el bot te pide el valor y tú **respondes a ese mensaje**. Puedes poner varios, uno por línea. Se acepta como lo escribes —`r/memes`, `#gatos`, `@cuenta`, o una URL de Reddit pegada— y se guarda ya limpio: guardar `r/memes` tal cual produce una URL rota que no se nota hasta la ronda siguiente. Lo que no sirve se rechaza diciendo por qué, y lo que ya estaba no se duplica.
+
+> Responder a un mensaje no existe en los canales. Añadir se hace en tu chat privado con el bot; ver y quitar funcionan en cualquier sitio.
+
+### Qué se aplica cuándo
+
+| Qué cambias | Cuándo surte efecto |
+|---|---|
+| **Orígenes** (subreddits, comunidades, búsquedas…) | **Ya.** Se escribe en `sources.yaml` y se aplica en memoria, adaptadores incluidos |
+| **Interruptor** de una fuente | **Ya**, pero recargando: vive en el `.env`, que solo se lee al construir la aplicación. Scrappy se reconstruye solo y **te avisa cuando vuelve**, con el estado de la fuente que acabas de tocar |
+
+La recarga tarda unos segundos, durante los cuales el bot no responde. Si no hay quien pueda recargar —`scrappy run --no-bot`, por ejemplo— el bot lo dice: «guardado, se aplicará al reiniciar». No promete lo que no puede cumplir.
+
+### Lo que no se puede hacer desde aquí, a propósito
+
+**Encender youtube, tiktok o instagram** (y X con `SCRAPPY_X_BACKEND=scrape`). Esas fuentes obtienen contenido incumpliendo los términos de sus plataformas, y para usarlas hace falta `SCRAPPY_ENABLE_TOS_RISKY_SOURCES=true` escrito a mano en el `.env` después de leer [LEGAL.md](LEGAL.md). El botón existe y responde explicando esto, pero **no escribe nada**: un consentimiento que se da pulsando un botón en el móvil sin leer nada no es un consentimiento.
+
+**Los pesos, los filtros y el resto de `sources.yaml`.** Eso es calibración, se hace mirando la tabla de puntuaciones, y para eso está la TUI.
+
+**Crear claves que no existan en el fichero.** Si tu `sources.yaml` no tiene `sources.youtube.channels`, la ficha lo dice y no ofrece añadir. El editor conserva tus comentarios y no inventa estructura; añádela al fichero con su comentario y vuelve.
 
 ---
 

@@ -20,12 +20,20 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from scrappy.app import ScrappyApp
+from scrappy.bot.callbacks_fuentes import despachar as despachar_fuentes
 from scrappy.bot.keyboards import (
+    ACCION_ANADIR,
     ACCION_BORRAR,
     ACCION_CANCELAR,
     ACCION_DISLIKE,
     ACCION_FETCH,
     ACCION_FETCH_MENU,
+    ACCION_FUENTE,
+    ACCION_FUENTES,
+    ACCION_INTERRUPTOR,
+    ACCION_ORIGENES,
+    ACCION_QUITAR,
+    ACCION_QUITAR_OK,
     ACCION_STATS,
     ACCION_VETAR,
     SEP,
@@ -50,6 +58,21 @@ def _autorizado(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user = update.effective_user
     admins: frozenset[int] = context.bot_data.get("admin_ids", frozenset())
     return user is not None and user.id in admins
+
+
+#: Los botones del menu de fuentes, que se atienden en su propio modulo: son
+#: casi la mitad de los del bot y tienen sus propias reglas.
+_ACCIONES_DE_FUENTES = frozenset(
+    {
+        ACCION_FUENTES,
+        ACCION_FUENTE,
+        ACCION_INTERRUPTOR,
+        ACCION_ORIGENES,
+        ACCION_ANADIR,
+        ACCION_QUITAR,
+        ACCION_QUITAR_OK,
+    }
+)
 
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -79,6 +102,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 await _stats(update, context, partes)
             case _ if accion in (ACCION_BORRAR, ACCION_VETAR, ACCION_DISLIKE):
                 await _accion_sobre_publicacion(update, context, accion, partes)
+            case _ if accion in _ACCIONES_DE_FUENTES:
+                await despachar_fuentes(update, context, accion, partes)
             case _:
                 await query.answer("No se que hacer con ese boton.", show_alert=True)
     except Exception as exc:  # el bot no puede morir por un boton

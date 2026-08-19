@@ -187,47 +187,122 @@ def run(
         typer.Option("--no-bot", help="Solo scheduler, sin escuchar comandos."),
     ] = False,
 ) -> None:
-    """Arranca el bot y el scheduler. Es lo que ejecuta el contenedor."""
+    """Arranca el bot y el scheduler. Es lo que ejecuta el contenedor.
+
+    Sin `--no-bot` esto no arranca una vez, sino que se queda en un ciclo: el
+    bot puede pedir que Scrappy se reconstruya -es la unica forma de que un
+    cambio del `.env` surta efecto- y quien lo reconstruye tiene que ser alguien
+    de fuera del bot, porque parar el listener desde dentro de su propio
+    handler seria esperarse a si mismo.
+    """
 
     async def _run() -> int:
+        if no_bot:
+            return await _solo_scheduler()
+        return await _bot_recargable()
+
+    raise typer.Exit(code=_execute(_run))
+
+
+async def _solo_scheduler() -> int:
+    """`--no-bot`: publica en su hora y no escucha a nadie.
+
+    Sin bot no hay quien pida una recarga, asi que aqui no hay ciclo.
+    """
+    app = await ScrappyApp.create(load_settings_or_die())
+    scheduler = PipelineScheduler(app)
+    try:
+        scheduler.start()
+        await avisar_arranque(app, scheduler, escuchando=False)
+        console.print("[green]Scheduler en marcha.[/] Ctrl+C para parar.")
+        await asyncio.Event().wait()  # espera indefinida
+        return 0
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        console.print("\nParando…")
+        return 0
+    finally:
+        scheduler.shutdown()
+        await app.aclose()
+
+
+async def _bot_recargable() -> int:
+    """Monta bot y scheduler, y los vuelve a montar cuando se pide una recarga.
+
+    El orden del desmontaje es el mismo que documenta la TUI, y por el mismo
+    motivo: se cierra todo lo viejo **antes** de montar lo nuevo, porque dos
+    `ScrappyApp` vivos son dos backends sobre la misma base de datos, y dos
+    escuchas con el mismo token hacen que Telegram le de las actualizaciones a
+    uno y un 409 al otro.
+    """
+    recarga = asyncio.Event()
+    motivo = ""
+
+    def solicitar(razon: str) -> bool:
+        """El encargo que ve el bot. Sincrono a proposito: ver `bot/recarga.py`."""
+        nonlocal motivo
+        motivo = razon
+        recarga.set()
+        return True
+
+    primera = True
+    while True:
         settings = load_settings_or_die()
         app = await ScrappyApp.create(settings)
         scheduler = PipelineScheduler(app)
+        listener = BotListener(app, scheduler, recargador=solicitar)
 
         try:
             scheduler.start()
-
-            if no_bot:
-                await avisar_arranque(app, scheduler, escuchando=False)
-                console.print("[green]Scheduler en marcha.[/] Ctrl+C para parar.")
-                await asyncio.Event().wait()  # espera indefinida
-                return 0
-
-            # El mismo BotListener que usa la TUI. Tenerlo escrito dos veces
-            # fue lo que dejo a la interfaz publicando sin escuchar.
-            listener = BotListener(app, scheduler)
             if not await _escuchar_con_reintentos(listener):
                 _fail("No se pudo conectar con Telegram. Ejecuta `scrappy doctor`.")
                 return 1
 
-            try:
-                # Despues de arrancar del todo, para que el aviso pueda decir
-                # la verdad sobre si escucha comandos y cuando es la ronda.
+            # Despues de arrancar del todo, para que el aviso pueda decir la
+            # verdad sobre si escucha comandos y cuando es la ronda.
+            if primera:
                 await avisar_arranque(app, scheduler)
                 console.print("[green]Bot y scheduler en marcha.[/] Ctrl+C para parar.")
-                await asyncio.Event().wait()
-            finally:
-                await listener.stop()
-            return 0
+            else:
+                await avisar_arranque(app, scheduler, motivo=motivo)
+                console.print(f"[green]Recargado:[/] {motivo}")
+
+            await recarga.wait()
+            recarga.clear()
+            primera = False
+            console.print(f"[yellow]Recargando:[/] {motivo}…")
+            await _esperar_a_que_no_haya_rondas(app)
 
         except (KeyboardInterrupt, asyncio.CancelledError):
             console.print("\nParando…")
             return 0
         finally:
+            await listener.stop()
             scheduler.shutdown()
             await app.aclose()
 
-    raise typer.Exit(code=_execute(_run))
+
+#: Cuanto se espera a que termine una ronda antes de recargar igualmente. Una
+#: ronda normal tarda menos de un minuto; pasado el plazo, seguir esperando
+#: seria dejar al usuario sin respuesta indefinidamente.
+_ESPERA_MAXIMA_RONDA = 60.0
+
+
+async def _esperar_a_que_no_haya_rondas(app: ScrappyApp) -> None:
+    """Aguanta a que no queden descargas en vuelo antes de desmontar.
+
+    `aclose()` cierra el cliente HTTP y el backend de estado; hacerlo a mitad
+    de una descarga deja el workspace a medias y el item sin publicar. Esperar
+    unos segundos es mucho mejor negocio que rehacer la ronda.
+    """
+    esperado = 0.0
+    while app.rondas_en_curso > 0 and esperado < _ESPERA_MAXIMA_RONDA:
+        if esperado == 0.0:
+            console.print("[dim]Esperando a que termine la ronda en curso…[/]")
+        await asyncio.sleep(1.0)
+        esperado += 1.0
+
+    if app.rondas_en_curso > 0:
+        log.warning("recarga_sin_esperar_ronda", segundos=esperado)
 
 
 # ---------------------------------------------------------------------------

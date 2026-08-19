@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterator
 import httpx
 
 from scrappy.config.loader import SourcesConfig
-from scrappy.config.settings import Settings
+from scrappy.config.settings import Settings, XBackend
 from scrappy.core.errors import ToSAcknowledgementRequiredError
 from scrappy.observability.logging import get_logger
 from scrappy.sources.base import DEFAULT_USER_AGENT, SourceAdapter
@@ -46,6 +46,21 @@ _FACTORIES: dict[str, AdapterFactory] = {
 def iter_adapter_names() -> Iterator[str]:
     """Nombres de todas las fuentes conocidas, esten activas o no."""
     yield from _FACTORIES
+
+
+def requiere_ack_de_tos(nombre: str, settings: Settings) -> bool:
+    """Si esa fuente esta detras del flag de aviso legal.
+
+    Se responde sin construir el adapter porque contestar a un boton de
+    Telegram no deberia montar un cliente HTTP ni leer credenciales.
+
+    `x` es el caso raro: su entrada de `_FACTORIES` no es una clase sino una
+    factoria que elige entre la API oficial -uso permitido- y el scrape, que
+    no lo es, segun `SCRAPPY_X_BACKEND`.
+    """
+    if nombre == "x":
+        return settings.x_backend != XBackend.API
+    return bool(getattr(_FACTORIES.get(nombre), "requires_tos_ack", False))
 
 
 def build_http_client(timeout: float = 30.0) -> httpx.AsyncClient:

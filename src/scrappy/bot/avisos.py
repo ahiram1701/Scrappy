@@ -35,18 +35,28 @@ def texto_arranque(
     scheduler: SchedulerProtocol | None,
     *,
     escuchando: bool,
+    motivo: str = "",
 ) -> str:
     """Lo que se manda. Separado del envio para poder leerlo en un test.
 
     Dice cuando arranco y cuando publicara, que son las dos preguntas que uno
     se hace al ver el aviso: la hora confirma que fue este reinicio y no el de
     ayer, y la proxima ronda dice si hay que esperar o no.
+
+    Args:
+        motivo: si viene, esto no es un arranque sino una recarga, y el motivo
+            es el cambio que la provoco. Se dice porque cierra el circulo: quien
+            acaba de apagar una fuente desde el movil quiere leer que se apago,
+            no un «en marcha» generico que podria ser de cualquier cosa.
     """
-    lineas = [
-        f"✅ <b>Scrappy en marcha</b> · v{html.escape(__version__)}",
-        f"Arrancado: <b>{html.escape(formato_local(utcnow(), app.settings.tzinfo))}</b>",
-        linea_scheduler(app, scheduler),
-    ]
+    if motivo:
+        cabecera = f"🔄 <b>Scrappy recargado</b> · v{html.escape(__version__)}"
+        segunda = f"Motivo: {html.escape(motivo)}"
+    else:
+        cabecera = f"✅ <b>Scrappy en marcha</b> · v{html.escape(__version__)}"
+        segunda = f"Arrancado: <b>{html.escape(formato_local(utcnow(), app.settings.tzinfo))}</b>"
+
+    lineas = [cabecera, segunda, linea_scheduler(app, scheduler)]
     if not escuchando:
         # Merece decirse: los botones de las publicaciones no responderan, y
         # sin esto pareceria que el bot esta roto.
@@ -59,13 +69,19 @@ async def avisar_arranque(
     scheduler: SchedulerProtocol | None = None,
     *,
     escuchando: bool = True,
+    motivo: str = "",
 ) -> int:
     """Avisa a cada administrador. Devuelve a cuantos les llego.
 
     Nunca levanta: un aviso que no sale no puede tumbar el arranque, que es lo
     que de verdad importa que siga en pie.
+
+    Con `motivo` el mensaje es el de una recarga. Ese si se manda aunque los
+    avisos de arranque esten apagados: no es ruido periodico, es la respuesta a
+    algo que el usuario acaba de pedir desde el movil, y quedarse sin
+    contestacion despues de pulsar un boton es peor que un mensaje de mas.
     """
-    if not app.settings.notify_on_start:
+    if not app.settings.notify_on_start and not motivo:
         return 0
 
     if app.bot is None:
@@ -80,7 +96,7 @@ async def avisar_arranque(
         )
         return 0
 
-    texto = texto_arranque(app, scheduler, escuchando=escuchando)
+    texto = texto_arranque(app, scheduler, escuchando=escuchando, motivo=motivo)
 
     enviados = 0
     for admin in sorted(admins):

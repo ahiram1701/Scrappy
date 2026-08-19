@@ -383,7 +383,12 @@ class SettingsScreen(Screen[None]):
 
         if ".env" not in guardados:
             # El catalogo se relee en cada ronda; no hay nada que recargar.
-            self.notify("Se aplica en la proxima ronda.")
+            # Esto era verdad a medias: el pipeline si releia el fichero, pero
+            # los adapters se quedaban con el suyo del arranque, asi que
+            # cambiar los subreddits no se aplicaba hasta reiniciar. Ahora el
+            # setter de `sources_config` tambien los refresca y la frase es
+            # cierta para todo el catalogo, origenes incluidos.
+            self.notify("Se aplica en la proxima ronda, sin reiniciar.")
             return
 
         # Los ajustes del `.env` se leen una sola vez, al construir la

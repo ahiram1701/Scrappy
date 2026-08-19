@@ -20,7 +20,7 @@ from telegram.ext import AIORateLimiter, ExtBot
 from scrappy.config.loader import SourcesConfig, load_sources_config
 from scrappy.config.settings import Settings
 from scrappy.core.errors import ConfigError
-from scrappy.core.models import RunReport
+from scrappy.core.models import RunReport, UltimaRonda, utcnow
 from scrappy.core.pipeline import Pipeline, ProgressCallback
 from scrappy.delivery.publisher import TelegramPublisher
 from scrappy.download.downloader import Downloader
@@ -92,6 +92,7 @@ class ScrappyApp:
         adapters: list[SourceAdapter],
         pipeline: Pipeline,
         bot: Bot | None,
+        env_path: Path,
     ) -> None:
         self.settings = settings
         self.client = client
@@ -101,6 +102,21 @@ class ScrappyApp:
         self.bot = bot
         self.paused = False
         self.sources_config = sources_config
+        #: De que fichero salieron los ajustes. Hace falta para poder
+        #: reescribirlo: quien quiera cambiar un ajuste -el menu de fuentes del
+        #: bot, sin ir mas lejos- tiene que tocar el mismo `.env` que se leyo,
+        #: no el que haya en el directorio actual, que puede ser otro.
+        self.env_path = env_path
+        #: Cuando se monto esta aplicacion. Es lo que `/status` llama «en
+        #: marcha desde»: con el arranque automatico no hay ventana que mirar,
+        #: asi que es la unica forma de saber si sobrevivio al ultimo reinicio.
+        self.arrancado_en = utcnow()
+        #: Como acabo la ultima ronda de verdad, la publique quien la publique.
+        self.ultima_ronda: UltimaRonda | None = None
+        #: Cuantas rondas hay ahora mismo en marcha. Lo mira quien quiera
+        #: recargar: cerrar el cliente HTTP y el backend con una descarga en
+        #: vuelo deja el workspace a medias y el item sin publicar.
+        self.rondas_en_curso = 0
 
     @property
     def sources_config(self) -> SourcesConfig:
@@ -127,11 +143,15 @@ class ScrappyApp:
         *,
         only_source: str | None = None,
         with_publisher: bool = True,
+        env_path: Path | None = None,
     ) -> ScrappyApp:
         """Monta la aplicacion.
 
         Args:
             only_source: limita el pipeline a una sola fuente.
+            env_path: de donde se leyeron los ajustes, para poder reescribirlo.
+                Por defecto el `.env` del directorio actual, que es lo que lee
+                `Settings()`. La TUI pasa el suyo, que puede ser otro.
             with_publisher: si False no se construye el bot ni se exige token,
                 que es lo que permite ejecutar `--dry-run` sin credenciales de
                 Telegram.
@@ -188,6 +208,7 @@ class ScrappyApp:
             adapters=adapters,
             pipeline=pipeline,
             bot=bot,
+            env_path=env_path or Path(".env"),
         )
 
     # ------------------------------------------------------------------
@@ -224,7 +245,24 @@ class ScrappyApp:
         dry_run: bool = False,
         on_progress: ProgressCallback | None = None,
     ) -> RunReport:
-        return await self.pipeline.run(limit=limit, dry_run=dry_run, on_progress=on_progress)
+        """Una ronda. Es el embudo por el que pasan todos: el scheduler, el
+        `/fetch` del bot, el boton de la TUI y la CLI.
+
+        Por eso la ultima ronda se apunta aqui y no en el scheduler: contada
+        solo alli, un `/fetch` manual no existiria y `/status` diria «aun no ha
+        corrido ninguna» justo despues de haber publicado.
+        """
+        self.rondas_en_curso += 1
+        try:
+            report = await self.pipeline.run(limit=limit, dry_run=dry_run, on_progress=on_progress)
+        finally:
+            self.rondas_en_curso -= 1
+
+        # Un dry-run no publica nada, asi que llamarlo «la ultima ronda» seria
+        # justo el tipo de verdad a medias que este proyecto persigue.
+        if not dry_run:
+            self.ultima_ronda = UltimaRonda(resumen=report.summary_line())
+        return report
 
     async def source_statuses(self) -> list[SourceStatus]:
         """Estado de todas las fuentes conocidas, no solo de las construidas."""

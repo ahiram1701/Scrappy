@@ -21,7 +21,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from scrappy.app import ScrappyApp
-from scrappy.core.models import utcnow
+from scrappy.core.models import UltimaRonda, utcnow
 from scrappy.core.tiempo import formato_local
 from scrappy.observability.logging import get_logger
 
@@ -95,6 +95,11 @@ class PipelineScheduler:
             log.info("scheduled_run_done", summary=report.summary_line())
         except Exception as exc:  # el scheduler debe sobrevivir a cualquier fallo
             log.exception("scheduled_run_failed", error=str(exc))
+            # El exito lo apunta `run_pipeline`, pero el fallo no llega alli:
+            # si solo se contaran los exitos, `/status` ensenaria la ultima
+            # ronda buena mientras las tres siguientes revientan, que es peor
+            # que no decir nada.
+            self._app.ultima_ronda = UltimaRonda(resumen=f"fallo: {exc}", correcta=False)
 
     def shutdown(self) -> None:
         if self._scheduler.running:

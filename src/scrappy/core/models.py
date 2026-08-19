@@ -213,6 +213,21 @@ class PublishedItem(BaseModel):
 # ---------------------------------------------------------------------------
 # Resultado de una ejecucion
 # ---------------------------------------------------------------------------
+class UltimaRonda(BaseModel):
+    """Como acabo la ultima ronda programada.
+
+    Vive aqui y no junto al scheduler para que los handlers del bot puedan
+    leerla sin importar APScheduler: el `SchedulerProtocol` existe justo para
+    que el bot no dependa de la implementacion del scheduler, y traerse este
+    tipo de alli lo desharia.
+    """
+
+    cuando: datetime = Field(default_factory=utcnow)
+    #: Lo que se ensena tal cual. Si fallo, dice que fallo y por que.
+    resumen: str
+    correcta: bool = True
+
+
 class RunOutcome(StrEnum):
     """Por que termino cada candidato como termino."""
 
