@@ -5,6 +5,12 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Arreglado — se colgaba al arrancar con el equipo si la red no estaba lista
+
+Tras un reinicio, Scrappy se quedó parado para siempre en `state_backend_ready`: construir la aplicación inicializa el bot contra Telegram, y esa llamada, hecha un minuto después de encender con el wifi aún sin asociar, no volvía nunca. Los reintentos de conexión que ya había protegían la **escucha**, una etapa más tarde; colgarse ocurría al **construir**, que no tenía red de seguridad.
+
+Peor todavía: un proceso colgado no termina, así que la tarea del Programador tampoco lo reintentaba. Ahora el montaje tiene un límite de 45 s y seis intentos, y si no lo consigue **termina con error**, que es lo que deja a Windows volver a intentarlo.
+
 ### Añadido — administrar Scrappy desde el móvil
 
 Con el arranque automático puesto, Scrappy corre sin ventana y el móvil es el único sitio desde donde se le habla. Le faltaba lo esencial: ver cómo está y poder tocar las fuentes.

@@ -12,6 +12,7 @@ las dos cosas, que es justo donde no miraba ningun test.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -393,3 +394,74 @@ async def test_se_acaba_rindiendo_en_vez_de_insistir_para_siempre(
 
     assert not await cli._escuchar_con_reintentos(listener)  # type: ignore[arg-type]
     assert listener.intentos == cli._INTENTOS_CONEXION
+
+
+# ---------------------------------------------------------------------------
+# Montar cuando la red no esta
+# ---------------------------------------------------------------------------
+async def test_un_montaje_colgado_no_deja_el_proceso_ahi_para_siempre(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El fallo que dejo a Scrappy sin arrancar tras un reinicio.
+
+    Construir la aplicacion habla con Telegram para inicializar el bot. Al
+    encender el equipo, con el wifi aun sin asociar, esa llamada se quedo
+    esperando para siempre: el proceso ni arrancaba ni terminaba, asi que no
+    habia ni bot ni forma de que la tarea del sistema lo reintentara.
+    """
+    from scrappy import cli
+
+    async def _no_vuelve_nunca(*_args: object, **_kwargs: object) -> None:
+        # Un evento que nadie levanta, y no `sleep`: la prueba sustituye
+        # `sleep` para no esperar de verdad, y el doble se lo saltaria.
+        await asyncio.Event().wait()
+
+    esperas: list[float] = []
+
+    async def _dormir(segundos: float) -> None:
+        esperas.append(segundos)
+
+    monkeypatch.setattr(cli.ScrappyApp, "create", _no_vuelve_nunca)
+    monkeypatch.setattr(cli, "_ESPERA_MONTAJE", 0.01)
+    monkeypatch.setattr(cli.asyncio, "sleep", _dormir)
+
+    assert await cli._montar_con_reintentos(object()) is None  # type: ignore[arg-type]
+    assert len(esperas) == cli._INTENTOS_MONTAJE - 1
+
+
+async def test_si_la_red_vuelve_a_tiempo_se_monta(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Insistir tiene que servir de algo: al segundo intento ya hay red."""
+    from scrappy import cli
+
+    intentos = 0
+
+    async def _tarda_una_vez(*_args: object, **_kwargs: object) -> str:
+        nonlocal intentos
+        intentos += 1
+        if intentos == 1:
+            await asyncio.Event().wait()
+        return "montada"
+
+    async def _dormir(_segundos: float) -> None:
+        return None
+
+    monkeypatch.setattr(cli.ScrappyApp, "create", _tarda_una_vez)
+    monkeypatch.setattr(cli, "_ESPERA_MONTAJE", 0.01)
+    monkeypatch.setattr(cli.asyncio, "sleep", _dormir)
+
+    assert await cli._montar_con_reintentos(object()) == "montada"  # type: ignore[arg-type]
+
+
+async def test_un_error_de_configuracion_no_se_reintenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Esperar no arregla un token mal escrito, y disimularlo con seis
+    intentos solo retrasaria el mensaje que explica que pasa."""
+    from scrappy import cli
+    from scrappy.core.errors import ConfigError
+
+    async def _configuracion_rota(*_args: object, **_kwargs: object) -> None:
+        raise ConfigError("falta el token")
+
+    monkeypatch.setattr(cli.ScrappyApp, "create", _configuracion_rota)
+
+    with pytest.raises(ConfigError):
+        await cli._montar_con_reintentos(object())  # type: ignore[arg-type]

@@ -28,6 +28,7 @@ from scrappy import __version__
 from scrappy.app import ScrappyApp, load_settings_or_die
 from scrappy.bot.avisos import avisar_arranque
 from scrappy.bot.listener import BotListener
+from scrappy.config.settings import Settings
 from scrappy.core.errors import ScrappyError
 from scrappy.observability.logging import configure_logging, get_logger
 from scrappy.scheduler.jobs import PipelineScheduler
@@ -247,7 +248,10 @@ async def _bot_recargable() -> int:
     primera = True
     while True:
         settings = load_settings_or_die()
-        app = await ScrappyApp.create(settings)
+        app = await _montar_con_reintentos(settings)
+        if app is None:
+            _fail("No se pudo montar Scrappy. Ejecuta `scrappy doctor`.")
+            return 1
         scheduler = PipelineScheduler(app)
         listener = BotListener(app, scheduler, recargador=solicitar)
 
@@ -622,6 +626,52 @@ def version() -> None:
 #: portatil recien encendido termine de asociarse al wifi.
 _INTENTOS_CONEXION = 6
 _ESPERA_ENTRE_INTENTOS = 30.0
+
+
+#: Cuanto se le da a un montaje antes de darlo por colgado. Construir la
+#: aplicacion habla con Telegram para inicializar el bot, y esa llamada se hizo
+#: eterna una vez: al encender el equipo, con el wifi todavia sin asociar, el
+#: proceso se quedo parado ahi para siempre. Sin ventana donde verlo y sin
+#: terminar, asi que Windows tampoco lo reintentaba.
+_ESPERA_MONTAJE = 45.0
+_INTENTOS_MONTAJE = 6
+
+
+async def _montar_con_reintentos(settings: Settings) -> ScrappyApp | None:
+    """Construye la aplicacion sin poder quedarse colgado para siempre.
+
+    Es el mismo problema que `_escuchar_con_reintentos` -arrancar antes de que
+    la red este lista- pero una etapa antes, y esa se me quedo sin red de
+    seguridad: los reintentos protegian la escucha, y colgarse ocurria al
+    construir.
+
+    Rendirse tambien es parte del arreglo. Un proceso que termina con error lo
+    reintenta la tarea del Programador; uno colgado no lo reintenta nadie.
+    """
+    for intento in range(1, _INTENTOS_MONTAJE + 1):
+        try:
+            async with asyncio.timeout(_ESPERA_MONTAJE):
+                return await ScrappyApp.create(settings)
+        except TimeoutError:
+            log.warning(
+                "montaje_colgado",
+                intento=intento,
+                de=_INTENTOS_MONTAJE,
+                segundos=_ESPERA_MONTAJE,
+                detalle="normalmente es la red, que aun no esta lista",
+            )
+        except ScrappyError:
+            # Un fallo de configuracion no se arregla esperando, y disimularlo
+            # con reintentos solo retrasaria el mensaje que explica que pasa.
+            raise
+        except Exception as exc:  # pragma: no cover - fallos de red variados
+            log.warning("montaje_fallido", intento=intento, error=str(exc))
+
+        if intento < _INTENTOS_MONTAJE:
+            await asyncio.sleep(_ESPERA_ENTRE_INTENTOS)
+
+    log.error("montaje_imposible", intentos=_INTENTOS_MONTAJE)
+    return None
 
 
 async def _escuchar_con_reintentos(listener: BotListener) -> bool:
