@@ -23,6 +23,7 @@ from scrappy.tui.fields import (
     RANKING_FIELDS,
     SCHEDULE_FIELDS,
     SOURCE_ENABLED_KEY,
+    SOURCE_EXTRA_ENV,
     STORAGE_FIELDS,
     TELEGRAM_FIELDS,
     EnvField,
@@ -155,6 +156,10 @@ async def test_apagar_una_fuente_a_proposito_si_funciona(
 def _todos_los_env() -> list[EnvField]:
     campos = [*TELEGRAM_FIELDS, *CONTENT_FIELDS, *SCHEDULE_FIELDS, *STORAGE_FIELDS]
     campos += [EnvField(clave, clave) for clave in SOURCE_ENABLED_KEY.values()]
+    # Los ajustes del `.env` propios de una fuente -el backend de X y su fichero
+    # de cookies- se pintan en su pestana y merecen la misma comprobacion.
+    for extra in SOURCE_EXTRA_ENV.values():
+        campos.extend(extra)
     return campos
 
 

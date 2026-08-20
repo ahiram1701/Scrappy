@@ -12,7 +12,10 @@ rodeos:
     backend `scrape`  Enumera perfiles con yt-dlp y cookies. No cuesta dinero,
                       pero incumple los terminos de servicio de X, se rompe
                       cuando la plataforma cambia, y puede acarrear el bloqueo
-                      de la cuenta cuyas cookies se usen.
+                      de la cuenta cuyas cookies se usen. Por eso las cookies
+                      deben salir de una **cuenta desechable**, creada para
+                      esto: es lo unico que convierte «te bloquean la cuenta»
+                      en un problema sin consecuencias.
 
 Se elige con `SCRAPPY_X_BACKEND`. El backend `scrape` ademas exige activar
 `SCRAPPY_ENABLE_TOS_RISKY_SOURCES`. Ver `docs/LEGAL.md` y
@@ -185,11 +188,23 @@ class XScrapeSource(YtDlpSource):
     """Backend de scraping: enumera perfiles con yt-dlp.
 
     Gratis pero contra los terminos de X. Requiere consentimiento explicito.
+
+    Los tres valores de abajo son la unica proteccion real que tiene quien lo
+    usa. X no publica sus limites, pero lo que distingue a un lector de un
+    scraper no es *que* pidas sino *a que ritmo*, asi que esta fuente va mas
+    despacio que ninguna: espera medio minuto entre perfiles y deja que yt-dlp
+    respire dentro de cada uno. Combinado con `objetivos_por_ronda: 1` en el
+    YAML, una ronda son dos peticiones espaciadas cada cuatro horas.
     """
 
     name = "x"
     platform_label = "X / Twitter"
-    cookies_required = False
+    # X exige sesion iniciada desde hace tiempo: sin cookies la enumeracion no
+    # devuelve nada. Marcarlo como opcional hacia que `/sources` dijera «lista»
+    # de una fuente que iba a fallar en silencio en la ronda siguiente.
+    cookies_required = True
+    default_delay_seconds = 30.0
+    sleep_requests = 2.0
 
     def collection_urls(self) -> list[str]:
         return [

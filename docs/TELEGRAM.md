@@ -296,6 +296,8 @@ Se entra por los botones de `/sources`. Tres pantallas, y cada una se **relee de
 │  ✅ reddit   │  ✅ lemmy    │
 ├──────────────┼──────────────┤
 │  ⚪ giphy    │  🔒 youtube  │
+├──────────────┼──────────────┤
+│  ⚠️ x        │  ⚪ tiktok   │
 └──────────────┴──────────────┘
 ```
 
@@ -304,6 +306,9 @@ Se entra por los botones de `/sources`. Tres pantallas, y cada una se **relee de
 | ✅ | Encendida |
 | ⚪ | Apagada por decisión tuya |
 | 🔒 | Detrás del aviso legal: incumple los términos de su plataforma |
+| ⚠️ | Encendida **y** de las que incumplen los términos: activa porque aceptaste el flag |
+
+El ⚠️ está porque el 🔒 desaparece en cuanto pones `SCRAPPY_ENABLE_TOS_RISKY_SOURCES=true`, y ese flag se acepta una vez y sigue puesto para siempre. Sin la advertencia, meses después estas fuentes se verían en el menú exactamente igual que Reddit.
 
 **2. La ficha.** El estado de esa fuente, el interruptor y un botón por cada campo de contenido, con cuántos valores tiene: `subreddits (8)`, `busquedas (3)`.
 
@@ -324,7 +329,9 @@ La recarga tarda unos segundos, durante los cuales el bot no responde. Si no hay
 
 ### Lo que no se puede hacer desde aquí, a propósito
 
-**Encender youtube, tiktok o instagram** (y X con `SCRAPPY_X_BACKEND=scrape`). Esas fuentes obtienen contenido incumpliendo los términos de sus plataformas, y para usarlas hace falta `SCRAPPY_ENABLE_TOS_RISKY_SOURCES=true` escrito a mano en el `.env` después de leer [LEGAL.md](LEGAL.md). El botón existe y responde explicando esto, pero **no escribe nada**: un consentimiento que se da pulsando un botón en el móvil sin leer nada no es un consentimiento.
+**Encender youtube, tiktok o instagram** (y X con `SCRAPPY_X_BACKEND=scrape`) **sin haber aceptado el flag.** Esas fuentes obtienen contenido incumpliendo los términos de sus plataformas, y para usarlas hace falta `SCRAPPY_ENABLE_TOS_RISKY_SOURCES=true` escrito a mano en el `.env` después de leer [LEGAL.md](LEGAL.md). El botón existe y responde explicando esto, pero **no escribe nada**: un consentimiento que se da pulsando un botón en el móvil sin leer nada no es un consentimiento.
+
+Y **con** el flag aceptado, encenderlas pide confirmación: el botón te dice qué implica y hace falta un segundo toque. Apagarlas no pregunta nunca —retirarse siempre es seguro—. Mientras el flag estuvo apagado, él mismo hacía de confirmación; una vez puesto, encender TikTok quedaba a un toque de encender Reddit.
 
 **Los pesos, los filtros y el resto de `sources.yaml`.** Eso es calibración, se hace mirando la tabla de puntuaciones, y para eso está la TUI.
 

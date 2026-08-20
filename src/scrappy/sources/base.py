@@ -10,6 +10,7 @@ Ver `docs/SOURCES.md` para la guia paso a paso.
 from __future__ import annotations
 
 import abc
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -25,6 +26,31 @@ log = get_logger(__name__)
 # User-Agent honesto: identifica al bot y enlaza el proyecto. Falsear el
 # User-Agent para simular un navegador es justo lo que no queremos hacer.
 DEFAULT_USER_AGENT = "Scrappy/0.1.0 (+https://github.com/Ahiram/Scrappy)"
+
+
+def rotar_objetivos(objetivos: list[str], por_ronda: int) -> list[str]:
+    """Elige que objetivos toca consultar en esta ronda.
+
+    Varias plataformas no admiten que se les consulte la lista entera cada vez
+    -Reddit responde 429, X te marca la IP-, asi que se recorre por tramos. El
+    desplazamiento sale de la hora actual, de modo que **rota solo entre
+    ejecuciones sin necesidad de guardar estado**: con 9 objetivos y 3 por
+    ronda, se cubre la lista entera cada tres rondas.
+
+    `por_ronda` menor que 1 se trata como 1, y pedir mas de los que hay
+    devuelve la lista tal cual.
+    """
+    if not objetivos:
+        return []
+
+    por_ronda = max(por_ronda, 1)
+    if por_ronda >= len(objetivos):
+        return objetivos
+
+    bloques = max(len(objetivos) // por_ronda, 1)
+    desplazamiento = (int(time.time() // 3600) % bloques) * por_ronda
+    rotados = objetivos[desplazamiento:] + objetivos[:desplazamiento]
+    return rotados[:por_ronda]
 
 
 @dataclass(frozen=True, slots=True)

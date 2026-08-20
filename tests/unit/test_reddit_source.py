@@ -399,3 +399,33 @@ async def test_status_sin_subreddits(reddit_settings: Settings) -> None:
 
     assert not status.configured
     assert "subreddits" in status.detail
+
+
+# ---------------------------------------------------------------------------
+# La rotacion, que ahora comparten Reddit y las fuentes de yt-dlp
+# ---------------------------------------------------------------------------
+def test_la_rotacion_cubre_la_lista_entera(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Consultar pocos por ronda no puede significar ignorar a los demas.
+
+    El desplazamiento sale de la hora, asi que se simulan tres horas seguidas y
+    se comprueba que entre las tres han salido los tres objetivos.
+    """
+    from scrappy.sources import base
+
+    objetivos = ["uno", "dos", "tres"]
+    vistos: list[str] = []
+
+    for hora in range(3):
+        monkeypatch.setattr(base.time, "time", lambda h=hora: h * 3600.0)
+        vistos.extend(base.rotar_objetivos(objetivos, 1))
+
+    assert sorted(vistos) == sorted(objetivos)
+
+
+def test_pedir_mas_de_los_que_hay_los_devuelve_todos() -> None:
+    from scrappy.sources.base import rotar_objetivos
+
+    assert rotar_objetivos(["uno", "dos"], 5) == ["uno", "dos"]
+    assert rotar_objetivos([], 3) == []
+    # Un 0 en el YAML no puede dejar la fuente sin consultar nada.
+    assert len(rotar_objetivos(["uno", "dos"], 0)) == 1

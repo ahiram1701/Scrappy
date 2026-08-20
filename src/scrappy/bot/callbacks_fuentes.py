@@ -37,6 +37,7 @@ from scrappy.bot.fuentes import (
     ya_esta,
 )
 from scrappy.bot.keyboards import (
+    confirmar_encender_arriesgada,
     confirmar_quitar,
     ficha_fuente,
     lista_origenes,
@@ -92,11 +93,15 @@ def _valores(editor: SourcesYamlEditor, fuente: str, campo: str) -> list[str] | 
 async def _pintar_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """La lista de fuentes, con su estado."""
     app = _app_de(context)
+    # `arriesgada` va sin restarle el flag a proposito: el candado desaparece al
+    # activarlo, pero la fuente sigue siendo la que es y el menu tiene que
+    # seguir diciendolo.
     estados = [
         (
             nombre,
             bool(getattr(app.settings, f"{nombre}_enabled", False)),
             requiere_ack_de_tos(nombre, app.settings) and not app.settings.enable_tos_risky_sources,
+            requiere_ack_de_tos(nombre, app.settings),
         )
         for nombre in iter_adapter_names()
     ]
@@ -179,6 +184,27 @@ async def _pintar_origenes(
         reply_markup=lista_origenes(
             fuente, campo, visibles, se_puede_anadir=len(valores) < MAXIMO_POR_LISTA
         ),
+    )
+
+
+async def _confirmar_encender(update: Update, fuente: str) -> None:
+    """Pregunta antes de encender una fuente que incumple los ToS.
+
+    El texto dice lo que se pierde de vista con el tiempo: que el flag global
+    se acepto una vez y sigue puesto, y que estas fuentes no son iguales que
+    las demas por mucho que el menu las pinte en la misma cuadricula.
+    """
+    query = update.callback_query
+    assert query is not None
+
+    await query.answer()
+    await query.edit_message_text(
+        f"⚠️ <b>{fuente}</b> obtiene el contenido incumpliendo los terminos de su "
+        "plataforma. Puede acarrear el bloqueo de tu IP o de la cuenta cuyas cookies "
+        "use, y se rompera cada pocas semanas.\n\n"
+        "Lo permite el flag que ya aceptaste en el <code>.env</code>. Encenderla?",
+        parse_mode=ParseMode.HTML,
+        reply_markup=confirmar_encender_arriesgada(fuente),
     )
 
 
@@ -271,17 +297,20 @@ async def _pedir_valor(
 
 
 async def _interruptor(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, fuente: str, encender: bool
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    fuente: str,
+    encender: bool,
+    *,
+    confirmado: bool = False,
 ) -> None:
     """Enciende o apaga una fuente escribiendo en el `.env`, y pide recarga."""
     app = _app_de(context)
     query = update.callback_query
     assert query is not None
 
-    bloqueada = (
-        requiere_ack_de_tos(fuente, app.settings) and not app.settings.enable_tos_risky_sources
-    )
-    if encender and bloqueada:
+    arriesgada = requiere_ack_de_tos(fuente, app.settings)
+    if encender and arriesgada and not app.settings.enable_tos_risky_sources:
         # Aqui no se escribe nada a proposito. El flag de ToS es un
         # consentimiento informado, y un consentimiento que se da pulsando un
         # boton en el movil sin leer nada no es un consentimiento.
@@ -291,6 +320,13 @@ async def _interruptor(
             "en el .env, despues de leer docs/LEGAL.md.",
             show_alert=True,
         )
+        return
+
+    if encender and arriesgada and not confirmado:
+        # Con el flag ya puesto -y se pone una vez, para siempre- encender una
+        # de estas quedaba a un toque de encender Reddit. Se recupera el paso
+        # que el flag hacia antes.
+        await _confirmar_encender(update, fuente)
         return
 
     from scrappy.tui.env_editor import EnvEditor  # ciclo: ver `_editor`
@@ -366,6 +402,7 @@ async def despachar(
         ACCION_FUENTE,
         ACCION_FUENTES,
         ACCION_INTERRUPTOR,
+        ACCION_INTERRUPTOR_OK,
         ACCION_ORIGENES,
         ACCION_QUITAR,
         ACCION_QUITAR_OK,
@@ -396,6 +433,8 @@ async def despachar(
             await _pintar_ficha(update, context, fuente)
         case _ if accion == ACCION_INTERRUPTOR:
             await _interruptor(update, context, fuente, encender=partes[2] == "1")
+        case _ if accion == ACCION_INTERRUPTOR_OK:
+            await _interruptor(update, context, fuente, encender=True, confirmado=True)
         case _ if accion == ACCION_ORIGENES:
             await query.answer()
             await _pintar_origenes(update, context, fuente, campo or 0)

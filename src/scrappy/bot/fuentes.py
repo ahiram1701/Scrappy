@@ -45,7 +45,10 @@ ORIGENES: dict[str, tuple[tuple[str, str], ...]] = {
     "imgur": (("tags", "etiquetas"),),
     "giphy": (("queries", "busquedas"),),
     "youtube": (("queries", "busquedas"), ("channels", "canales")),
-    "x": (("queries", "busquedas"), ("accounts", "cuentas")),
+    # X es la unica con dos backends, y cada uno lee un campo distinto: con
+    # `scrape` las busquedas no las mira nadie. Sin decirlo en la etiqueta, uno
+    # se pasa un rato anadiendo consultas que no hacen nada.
+    "x": (("queries", "busquedas (backend api)"), ("accounts", "cuentas (backend scrape)")),
     "tiktok": (("hashtags", "hashtags"), ("accounts", "cuentas")),
     "instagram": (("hashtags", "hashtags"), ("accounts", "cuentas")),
 }

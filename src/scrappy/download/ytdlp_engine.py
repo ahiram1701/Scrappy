@@ -89,17 +89,34 @@ class YtDlpEngine:
     # Enumeracion (solo metadatos, no descarga nada)
     # ------------------------------------------------------------------
     async def enumerate(
-        self, url: str, *, limit: int, cookies_file: Path | None = None
+        self,
+        url: str,
+        *,
+        limit: int,
+        cookies_file: Path | None = None,
+        sleep_requests: float = 0.0,
     ) -> list[dict[str, Any]]:
         """Lista las entradas de una URL de coleccion (perfil, hashtag, busqueda).
 
         Usa `extract_flat`, que solo lee el indice y no visita cada video, de
         modo que enumerar 40 candidatos cuesta una peticion y no cuarenta.
+
+        Args:
+            sleep_requests: segundos que yt-dlp espera entre peticiones *dentro*
+                de una misma enumeracion. Un indice largo se pagina, asi que el
+                espaciado que haga el adapter entre colecciones no cubre esto.
+                Por defecto 0, que es como se ha comportado siempre.
         """
-        return await asyncio.to_thread(self._enumerate_sync, url, limit, cookies_file)
+        return await asyncio.to_thread(
+            self._enumerate_sync, url, limit, cookies_file, sleep_requests
+        )
 
     def _enumerate_sync(
-        self, url: str, limit: int, cookies_file: Path | None
+        self,
+        url: str,
+        limit: int,
+        cookies_file: Path | None,
+        sleep_requests: float = 0.0,
     ) -> list[dict[str, Any]]:
         options = self._base_options(cookies_file)
         options.update(
@@ -109,6 +126,12 @@ class YtDlpEngine:
                 "noplaylist": False,
             }
         )
+        if sleep_requests > 0:
+            options["sleep_interval_requests"] = sleep_requests
+            # Quien pide espaciado lo pide porque la plataforma le esta
+            # apretando. Reintentar tres veces contra alguien que ya te esta
+            # rechazando es justo lo contrario de lo que se busca.
+            options["extractor_retries"] = 1
         try:
             with YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=False)

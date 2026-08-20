@@ -50,6 +50,7 @@ from scrappy.tui.fields import (
     RANKING_FIELDS,
     SCHEDULE_FIELDS,
     SOURCE_ENABLED_KEY,
+    SOURCE_EXTRA_ENV,
     STORAGE_FIELDS,
     TELEGRAM_FIELDS,
     TOS_RISKY,
@@ -216,11 +217,15 @@ class SettingsScreen(Screen[None]):
                     EnvField(
                         clave,
                         f"Activar {fuente}",
-                        _aviso_tos(fuente),
+                        self._aviso_tos(fuente),
                         kind=FieldKind.BOOL,
                     )
                 )
             )
+            # Ajustes del `.env` propios de la fuente -hoy solo los de X-, que
+            # van pegados al interruptor porque cambian lo que significa
+            # encenderla.
+            hijos += [self._campo_env(campo) for campo in SOURCE_EXTRA_ENV.get(fuente, ())]
 
         if self._yaml is not None and fuente in self._yaml.source_names():
             hijos += [self._campo_yaml(campo) for campo in fields_for_source(fuente)]
@@ -235,6 +240,37 @@ class SettingsScreen(Screen[None]):
     # ------------------------------------------------------------------
     # Widgets
     # ------------------------------------------------------------------
+    def _aviso_tos(self, fuente: str) -> str:
+        """Que implica encender esa fuente, con lo que hay puesto ahora mismo.
+
+        Para X no basta una frase fija: la misma casilla significa «llamar a una
+        API de pago» o «incumplir los terminos de X» segun el backend, y decir
+        las dos cosas a la vez es no decir ninguna.
+        """
+        if fuente in TOS_RISKY:
+            return (
+                "Incumple los terminos de su plataforma. Necesita ademas "
+                "«Permitir fuentes con riesgo de ToS» en Almacenamiento. "
+                "Lee docs/LEGAL.md."
+            )
+        if fuente != "x":
+            return ""
+
+        backend = (self._env.get_value("SCRAPPY_X_BACKEND") if self._env else None) or (
+            self._valor_efectivo("SCRAPPY_X_BACKEND")
+        )
+        if backend.strip().lower() == "scrape":
+            return (
+                "Ahora mismo incumple los terminos de X. Las cookies tienen que "
+                "salir de una CUENTA DESECHABLE, nunca de la tuya. Necesita ademas "
+                "«Permitir fuentes con riesgo de ToS» en Almacenamiento. "
+                "Lee docs/LEGAL.md."
+            )
+        return (
+            "Con el backend `api`, buscar exige el tier Basic de X (~200 USD/mes); "
+            "con el gratuito recibiras 403."
+        )
+
     def _campo_env(self, campo: EnvField) -> Vertical:
         assert self._env is not None
 
@@ -467,18 +503,6 @@ def _falta_seccion(fuente: str) -> str:
         "Para configurarla, copia su bloque de config/sources.example.yaml "
         "dentro de «sources:» y recarga con R."
     )
-
-
-def _aviso_tos(fuente: str) -> str:
-    if fuente in TOS_RISKY:
-        return (
-            "Incumple los terminos de su plataforma. Necesita ademas "
-            "«Permitir fuentes con riesgo de ToS» en Almacenamiento. "
-            "Lee docs/LEGAL.md."
-        )
-    if fuente == "x":
-        return "El backend `api` necesita el tier de pago de X; el `scrape` incumple sus terminos."
-    return ""
 
 
 def _como_bool(valor: Any) -> bool:

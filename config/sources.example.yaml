@@ -137,10 +137,22 @@ sources:
   # backend `api`   -> requiere tier Basic de pago (~200 USD/mes) para buscar.
   # backend `scrape`-> yt-dlp + cookies, gratis pero contra ToS y fragil.
   # Se elige con SCRAPPY_X_BACKEND en el .env.
+  #
+  # LOS NUMEROS DE ABAJO SON LA PROTECCION, no una preferencia de gusto. Con el
+  # backend `scrape` no hay un limite publicado que respetar: lo que distingue a
+  # un lector de un scraper es el ritmo. Un perfil por ronda, cada cuatro horas,
+  # se parece a alguien mirando X; cuatro perfiles seguidos, no. Subir
+  # `objetivos_por_ronda` o bajar `delay_seconds` es exactamente lo que hace que
+  # te marquen la IP y la cuenta.
+  #
+  # La lista entera se sigue cubriendo: los perfiles se ROTAN entre rondas, asi
+  # que con 3 cuentas y 1 por ronda se recorren las tres cada tres rondas.
   # ---------------------------------------------------------------------------
   x:
     weight: 0.7
-    budget: 40
+    budget: 20            # menos candidatos por ronda = menos paginacion
+    objetivos_por_ronda: 1 # cuantos perfiles consultar en cada ronda
+    delay_seconds: 30     # espera entre perfiles, cuando toca mas de uno
     # Consultas para el backend `api` (sintaxis de X API v2).
     queries:
       - "(funny OR meme) has:videos -is:retweet lang:es min_faves:2000"

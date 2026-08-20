@@ -414,3 +414,63 @@ def test_los_campos_declarados_existen_en_el_catalogo_de_ejemplo(tmp_path: Path)
         if clave not in (datos[fuente] or {})
     ]
     assert faltan == [], f"campos declarados que no estan en el ejemplo: {faltan}"
+
+
+# ---------------------------------------------------------------------------
+# Que el riesgo siga siendo visible despues de aceptar el flag
+# ---------------------------------------------------------------------------
+def test_una_fuente_de_riesgo_encendida_no_se_pinta_como_las_demas() -> None:
+    """El candado depende del flag; la advertencia, no.
+
+    Quien activo `ENABLE_TOS_RISKY_SOURCES` hace meses ya no se acuerda, y sin
+    esto TikTok se veia en el menu exactamente igual que Reddit.
+    """
+    from scrappy.bot.keyboards import menu_fuentes
+
+    teclado = menu_fuentes(
+        [
+            ("reddit", True, False, False),
+            ("tiktok", True, False, True),
+            ("instagram", False, False, True),
+            ("youtube", False, True, True),
+        ]
+    )
+    etiquetas = [b.text for fila in teclado.inline_keyboard for b in fila]
+
+    assert "✅ reddit" in etiquetas
+    assert "⚠️ tiktok" in etiquetas
+    assert "⚪ instagram" in etiquetas
+    assert "🔒 youtube" in etiquetas
+
+
+async def test_encender_una_de_riesgo_pide_confirmacion(app: ScrappyApp, entorno: Any) -> None:
+    """Con el flag ya puesto, encender TikTok quedaba a un toque de Reddit."""
+    _, env_path = entorno
+    app.settings = app.settings.model_copy(update={"enable_tos_risky_sources": True})
+    antes = env_path.read_text(encoding="utf-8")
+    query = FakeQuery()
+
+    await cf.despachar(FakeUpdate(query), FakeContext(app), "so", ["so", "youtube", "1"])
+
+    # Preguntar, no escribir.
+    assert env_path.read_text(encoding="utf-8") == antes
+    assert "incumpliendo los terminos" in query.textos[-1]
+
+
+async def test_confirmada_si_se_enciende(app: ScrappyApp, entorno: Any) -> None:
+    _, env_path = entorno
+    app.settings = app.settings.model_copy(update={"enable_tos_risky_sources": True})
+
+    await cf.despachar(FakeUpdate(FakeQuery()), FakeContext(app), "soc", ["soc", "youtube"])
+
+    assert "SCRAPPY_YOUTUBE_ENABLED=true" in env_path.read_text(encoding="utf-8")
+
+
+async def test_apagar_una_de_riesgo_es_inmediato(app: ScrappyApp, entorno: Any) -> None:
+    """Retirarse siempre es seguro: preguntar aqui solo estorbaria."""
+    _, env_path = entorno
+    app.settings = app.settings.model_copy(update={"enable_tos_risky_sources": True})
+
+    await cf.despachar(FakeUpdate(FakeQuery()), FakeContext(app), "so", ["so", "youtube", "0"])
+
+    assert "SCRAPPY_YOUTUBE_ENABLED=false" in env_path.read_text(encoding="utf-8")

@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-import time
 from datetime import UTC, datetime
 from xml.etree import ElementTree
 
@@ -43,7 +42,7 @@ import httpx
 
 from scrappy.core.errors import RateLimitedError, SourceError
 from scrappy.core.models import MediaKind, RawCandidate, utcnow
-from scrappy.sources.base import SourceAdapter, SourceStatus
+from scrappy.sources.base import SourceAdapter, SourceStatus, rotar_objetivos
 
 _FEED_URL = "https://www.reddit.com/r/{subreddit}/.rss"
 
@@ -155,15 +154,13 @@ class RedditSource(SourceAdapter):
         la lista por tramos. El desplazamiento sale de la hora actual, de modo
         que rota solo entre ejecuciones sin necesidad de guardar estado: con 9
         subreddits y 3 por ronda, se cubre la lista entera cada tres rondas.
-        """
-        per_run = max(self.config.get_int("subreddits_per_run", _DEFAULT_SUBS_PER_RUN), 1)
-        if per_run >= len(subreddits):
-            return subreddits
 
-        blocks = max(len(subreddits) // per_run, 1)
-        offset = (int(time.time() // 3600) % blocks) * per_run
-        rotated = subreddits[offset:] + subreddits[:offset]
-        return rotated[:per_run]
+        La mecanica vive en `rotar_objetivos` porque las fuentes de yt-dlp
+        tienen el mismo problema y no tenia sentido resolverlo dos veces.
+        """
+        return rotar_objetivos(
+            subreddits, self.config.get_int("subreddits_per_run", _DEFAULT_SUBS_PER_RUN)
+        )
 
     async def _fetch_feed(self, subreddit: str) -> list[ElementTree.Element]:
         """Descarga y parsea el feed Atom de un subreddit.

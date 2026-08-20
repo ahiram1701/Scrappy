@@ -273,7 +273,35 @@ SOURCE_ENABLED_KEY = {
 }
 
 #: Fuentes que necesitan el flag de ToS. Se avisa en su pestana.
+#:
+#: `x` no esta aqui a proposito: depende de su backend, y quien lo decide es
+#: `registry.requiere_ack_de_tos`. Su aviso se compone aparte, en la pantalla.
 TOS_RISKY = frozenset({"youtube", "tiktok", "instagram"})
+
+#: Ajustes del `.env` propios de una fuente, mas alla de su interruptor.
+#:
+#: Las credenciales siguen sin estar en la TUI -es el criterio del proyecto-,
+#: pero el backend de X no es una credencial: es el ajuste que decide si la
+#: fuente usa la via oficial o la que incumple los terminos, y tenerlo invisible
+#: hacia que la pestana no dijera lo que de verdad estaba pasando.
+SOURCE_EXTRA_ENV: dict[str, tuple[EnvField, ...]] = {
+    "x": (
+        EnvField(
+            "SCRAPPY_X_BACKEND",
+            "Backend",
+            "`api` es la via oficial, pero buscar exige el tier Basic de pago. "
+            "`scrape` es gratis e incumple los terminos de X.",
+            kind=FieldKind.CHOICE,
+            choices=("api", "scrape"),
+        ),
+        EnvField(
+            "SCRAPPY_X_COOKIES_FILE",
+            "Fichero de cookies",
+            "Solo para el backend `scrape`, en formato Netscape. Que salga de "
+            "una CUENTA DESECHABLE: X bloquea la cuenta cuyas cookies se usen.",
+        ),
+    ),
+}
 
 _COMUNES = (
     ("weight", "Peso de la fuente", "Tu preferencia manual, de 0 a 1.", FieldKind.NUMBER),
@@ -345,6 +373,20 @@ SOURCE_EXTRA_FIELDS: dict[str, tuple[tuple[str, str, str, FieldKind], ...]] = {
     "x": (
         ("queries", "Consultas (backend api)", "Sintaxis de la API v2 de X.", FieldKind.LIST),
         ("accounts", "Cuentas (backend scrape)", "Sin la @.", FieldKind.LIST),
+        (
+            "objetivos_por_ronda",
+            "Perfiles por ronda",
+            "Con el backend `scrape`, esto ES la proteccion. Un perfil cada "
+            "cuatro horas se parece a alguien mirando X; cuatro seguidos, no. "
+            "Se rotan, asi que la lista entera se cubre igual.",
+            FieldKind.NUMBER,
+        ),
+        (
+            "delay_seconds",
+            "Espera entre perfiles (s)",
+            "Solo aplica cuando toca mas de uno. Bajarlo es lo que te marca.",
+            FieldKind.NUMBER,
+        ),
     ),
     "tiktok": (
         ("hashtags", "Hashtags", "Sin la #.", FieldKind.LIST),

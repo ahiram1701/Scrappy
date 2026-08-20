@@ -60,9 +60,7 @@ class FakeEngine:
         self._entries = entries
         self.urls: list[str] = []
 
-    async def enumerate(
-        self, url: str, *, limit: int, cookies_file: Any = None
-    ) -> list[dict[str, Any]]:
+    async def enumerate(self, url: str, *, limit: int, **_kwargs: Any) -> list[dict[str, Any]]:
         self.urls.append(url)
         return self._entries[:limit]
 

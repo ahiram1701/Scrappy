@@ -71,6 +71,13 @@ Aun así, el criterio del proyecto es "si la plataforma no ofrece una vía para 
 
 El precio del tier de pago es la razón real por la que existe el backend `scrape`. Es tu decisión cuál usar; el proyecto no la toma por ti.
 
+Si eliges `scrape`, dos cosas que reducen el daño de verdad y una que no:
+
+- **Las cookies tienen que salir de una cuenta desechable**, creada para esto y desde un perfil de navegador aparte. Es lo único que convierte «te bloquean la cuenta» en un problema sin consecuencias. Nunca las de tu cuenta personal.
+- **El ritmo importa más que el volumen.** Lo que distingue a un lector de un scraper no es cuánto pides sino a qué velocidad. Por eso `x` viene con `objetivos_por_ronda: 1` y `delay_seconds: 30` en `sources.yaml`, y Scrappy se retira solo en cuanto X responde con un límite. Subir esos números es exactamente lo que hace que te marquen.
+- **Lo que no ayuda:** falsear el User-Agent o esconderse tras un proxy. Espaciar las peticiones es autocontención; disfrazarse es otra cosa, y este proyecto no la hace.
+
+
 ### TikTok — incumple los ToS ❌
 
 TikTok no ofrece API pública para descubrir y descargar contenido viral. La única vía es enumerar hashtags y perfiles con yt-dlp.

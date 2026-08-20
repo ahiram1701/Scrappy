@@ -259,6 +259,7 @@ async def cmd_sources(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             s.name,
             s.enabled,
             requiere_ack_de_tos(s.name, app.settings) and not app.settings.enable_tos_risky_sources,
+            requiere_ack_de_tos(s.name, app.settings),
         )
         for s in statuses
     ]

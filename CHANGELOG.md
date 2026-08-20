@@ -5,6 +5,26 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido — X por scraping, y el freno que le faltaba
+
+Activar X con el backend `scrape` es una decisión del usuario y sigue siéndolo. Lo que no era una decisión de nadie es que, al hacerlo, Scrappy pidiera los perfiles **uno detrás de otro y sin pausa**. Era la única familia de fuentes sin espaciado: Reddit, Lemmy, Bluesky, Imgur y Giphy lo tenían todas.
+
+Peor: cuando la plataforma respondía con un límite, seguía adelante con el resto de la lista. Reddit hace lo contrario desde el primer día, y por una razón escrita en su propio código —insistir cuando ya te están limitando solo empeora las cosas—.
+
+- **Las colecciones se rotan y se espacian.** `objetivos_por_ronda` y `delay_seconds` en `sources.yaml`, con la misma mecánica de rotación por horas que ya usaba Reddit, ahora compartida. X viene con **un perfil por ronda y 30 s entre perfiles**; la lista entera se sigue cubriendo, solo que repartida entre rondas.
+- **Un rate limit corta la ronda** en vez de confirmar el patrón que te delató. Lo ya recogido se conserva: parar no es fracasar.
+- **yt-dlp también respira** dentro de cada perfil, y deja de reintentar tres veces contra quien acaba de rechazarnos.
+- **X exige cookies para dar la fuente por lista.** Antes `/sources` decía «lista» de algo que iba a fallar en silencio tres horas después, en un log que nadie mira. Que sean de una **cuenta desechable** está ahora dicho en todos los sitios donde se configuran.
+
+### Arreglado — el aviso de las fuentes de riesgo desaparecía al aceptar el flag
+
+El candado 🔒 del menú de Telegram dependía de que `ENABLE_TOS_RISKY_SOURCES` estuviera apagado. En cuanto se activaba —y ese flag se acepta una vez, para siempre— X, TikTok, Instagram y YouTube pasaban a verse **idénticas a Reddit**, y encender cualquiera de ellas era un toque sin confirmación. Quien aceptó el flag hace tres meses ya no se acuerda.
+
+- Marca **⚠️** para las fuentes de riesgo encendidas, que sobrevive al flag.
+- **Encenderlas pide confirmación.** Apagarlas no pregunta nunca: retirarse siempre es seguro.
+- La TUI enseña por fin **el backend de X y su fichero de cookies**, que era el ajuste que decide si la fuente usa la vía oficial o la que incumple los términos y no se podía ni ver desde la interfaz. Su aviso dice ahora cuál de los dos está puesto, en vez de nombrar los dos.
+- En Telegram, la ficha de X rotula qué campo lee cada backend: con `scrape`, las búsquedas no las mira nadie.
+
 ### Arreglado — se colgaba al arrancar con el equipo si la red no estaba lista
 
 Tras un reinicio, Scrappy se quedó parado para siempre en `state_backend_ready`: construir la aplicación inicializa el bot contra Telegram, y esa llamada, hecha un minuto después de encender con el wifi aún sin asociar, no volvía nunca. Los reintentos de conexión que ya había protegían la **escucha**, una etapa más tarde; colgarse ocurría al **construir**, que no tenía red de seguridad.

@@ -46,6 +46,7 @@ ACCION_ORIGENES = "sl"
 ACCION_ANADIR = "sa"
 ACCION_QUITAR = "sq"
 ACCION_QUITAR_OK = "sqc"
+ACCION_INTERRUPTOR_OK = "soc"
 
 __all__ = [
     "ACCION_ANADIR",
@@ -57,6 +58,7 @@ __all__ = [
     "ACCION_FUENTE",
     "ACCION_FUENTES",
     "ACCION_INTERRUPTOR",
+    "ACCION_INTERRUPTOR_OK",
     "ACCION_ORIGENES",
     "ACCION_QUITAR",
     "ACCION_QUITAR_OK",
@@ -64,6 +66,7 @@ __all__ = [
     "ACCION_VETAR",
     "SEP",
     "acciones_de_publicacion",
+    "confirmar_encender_arriesgada",
     "confirmar_quitar",
     "ficha_fuente",
     "lista_origenes",
@@ -116,22 +119,32 @@ def menu_stats() -> InlineKeyboardMarkup:
 # ---------------------------------------------------------------------------
 # Configurar fuentes
 # ---------------------------------------------------------------------------
-def menu_fuentes(estados: list[tuple[str, bool, bool]]) -> InlineKeyboardMarkup:
+def menu_fuentes(estados: list[tuple[str, bool, bool, bool]]) -> InlineKeyboardMarkup:
     """Las nueve fuentes, con su estado a la vista.
 
     Args:
-        estados: `(nombre, encendida, bloqueada_por_tos)` en el orden en que se
-            quieren pintar.
+        estados: `(nombre, encendida, bloqueada_por_tos, arriesgada)` en el
+            orden en que se quieren pintar.
 
     El emoji no es decoracion: es lo unico que distingue de un vistazo «apagada
     porque no la quiero» de «apagada porque incumple los terminos y hace falta
     aceptarlo a mano», y son dos situaciones que se arreglan de forma distinta.
+
+    El ⚠️ existe por un agujero que se veia venir: el candado depende de que
+    `ENABLE_TOS_RISKY_SOURCES` este apagado, asi que **en cuanto alguien activa
+    ese flag las fuentes de riesgo pasaban a verse identicas a Reddit**. Quien
+    lo activo hace tres meses ya no se acuerda. La marca sobrevive al flag.
     """
     filas = []
     for i in range(0, len(estados), 2):
         fila = []
-        for nombre, encendida, bloqueada in estados[i : i + 2]:
-            marca = "🔒" if bloqueada else ("✅" if encendida else "⚪")
+        for nombre, encendida, bloqueada, arriesgada in estados[i : i + 2]:
+            if bloqueada:
+                marca = "🔒"
+            elif encendida:
+                marca = "⚠️" if arriesgada else "✅"
+            else:
+                marca = "⚪"
             fila.append(
                 InlineKeyboardButton(
                     f"{marca} {nombre}", callback_data=f"{ACCION_FUENTE}{SEP}{nombre}"
@@ -218,6 +231,30 @@ def lista_origenes(
     ultima.append(InlineKeyboardButton("‹ Volver", callback_data=f"{ACCION_FUENTE}{SEP}{fuente}"))
     filas.append(ultima)
     return InlineKeyboardMarkup(filas)
+
+
+def confirmar_encender_arriesgada(fuente: str) -> InlineKeyboardMarkup:
+    """Encender una fuente que incumple los ToS pide un segundo toque.
+
+    Mientras `ENABLE_TOS_RISKY_SOURCES` estaba apagado, el propio flag hacia de
+    confirmacion: habia que ir al `.env` y escribirlo a mano. En cuanto se
+    activa -y se activa una vez, para siempre- encender TikTok pasaba a ser un
+    toque al lado de encender Reddit. Esto devuelve el paso que se perdio.
+
+    Apagar no confirma nunca: retirarse siempre es seguro y tiene que ser
+    inmediato.
+    """
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Si, encender",
+                    callback_data=f"{ACCION_INTERRUPTOR_OK}{SEP}{fuente}",
+                ),
+                InlineKeyboardButton("Cancelar", callback_data=f"{ACCION_FUENTE}{SEP}{fuente}"),
+            ]
+        ]
+    )
 
 
 def confirmar_quitar(fuente: str, campo: int, indice: int) -> InlineKeyboardMarkup:
