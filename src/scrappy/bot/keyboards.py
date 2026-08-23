@@ -47,11 +47,13 @@ ACCION_ANADIR = "sa"
 ACCION_QUITAR = "sq"
 ACCION_QUITAR_OK = "sqc"
 ACCION_INTERRUPTOR_OK = "soc"
+ACCION_COOKIES = "sck"
 
 __all__ = [
     "ACCION_ANADIR",
     "ACCION_BORRAR",
     "ACCION_CANCELAR",
+    "ACCION_COOKIES",
     "ACCION_DISLIKE",
     "ACCION_FETCH",
     "ACCION_FETCH_MENU",
@@ -162,6 +164,7 @@ def ficha_fuente(
     encendida: bool,
     campos: tuple[tuple[str, str], ...],
     cuantos: dict[str, int | None],
+    renovable: bool = False,
 ) -> InlineKeyboardMarkup:
     """Interruptor y campos de origen de una fuente.
 
@@ -170,6 +173,9 @@ def ficha_fuente(
             en el YAML. Se distingue porque el editor no crea claves que no
             existan, y ofrecer «anadir» donde no se va a poder escribir seria
             prometer algo que no se cumple.
+        renovable: si esa fuente tiene una sesion que se pueda renovar. Hoy
+            solo X con el backend `scrape`. Un boton que no aplica es peor que
+            no tener boton, asi que no se pinta para las demas.
     """
     filas = [
         [
@@ -193,6 +199,15 @@ def ficha_fuente(
                 InlineKeyboardButton(
                     f"{etiqueta} ({total})",
                     callback_data=f"{ACCION_ORIGENES}{SEP}{fuente}{SEP}{indice}",
+                )
+            ]
+        )
+
+    if renovable:
+        filas.append(
+            [
+                InlineKeyboardButton(
+                    "🔄 Renovar cookies", callback_data=f"{ACCION_COOKIES}{SEP}{fuente}"
                 )
             ]
         )

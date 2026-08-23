@@ -25,6 +25,7 @@ from scrappy.bot.keyboards import (
     ACCION_ANADIR,
     ACCION_BORRAR,
     ACCION_CANCELAR,
+    ACCION_COOKIES,
     ACCION_DISLIKE,
     ACCION_FETCH,
     ACCION_FETCH_MENU,
@@ -73,6 +74,7 @@ _ACCIONES_DE_FUENTES = frozenset(
         ACCION_ANADIR,
         ACCION_QUITAR,
         ACCION_QUITAR_OK,
+        ACCION_COOKIES,
     }
 )
 

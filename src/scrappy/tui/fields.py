@@ -300,6 +300,14 @@ SOURCE_EXTRA_ENV: dict[str, tuple[EnvField, ...]] = {
             "Solo para el backend `scrape`, en formato Netscape. Que salga de "
             "una CUENTA DESECHABLE: X bloquea la cuenta cuyas cookies se usen.",
         ),
+        EnvField(
+            "SCRAPPY_X_COOKIES_BROWSER",
+            "Navegador de donde renovarlas",
+            "`firefox:burner` -navegador y perfil-, o solo `firefox`. Vale el "
+            "nombre del perfil, no hace falta su carpeta. Con esto puesto, "
+            "Scrappy renueva la sesion solo cuando X la invalide; sin esto, "
+            "hay que hacerlo a mano. No hay que cerrar el navegador.",
+        ),
     ),
 }
 

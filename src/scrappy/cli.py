@@ -115,6 +115,41 @@ def sources() -> None:
 
 
 # ---------------------------------------------------------------------------
+# cookies
+# ---------------------------------------------------------------------------
+@cli.command()
+def cookies() -> None:
+    """Renueva la sesion de X releyendo las cookies del navegador.
+
+    El backend `scrape` de X vive de las cookies de una cuenta desechable, y
+    esas cookies se mueren. Esto las reextrae del perfil que diga
+    SCRAPPY_X_COOKIES_BROWSER, se queda solo con las de X -el perfil trae
+    tambien la sesion del correo, y esa no tiene por que viajar a ningun
+    sitio- y las deja en SCRAPPY_X_COOKIES_FILE.
+
+    No hace falta cerrar el navegador: yt-dlp copia la base de datos antes de
+    leerla.
+    """
+
+    async def _run() -> int:
+        from scrappy.sources.x_cookies import renovar_cookies
+
+        settings = load_settings_or_die()
+        resultado = renovar_cookies(settings)
+
+        if resultado.ok:
+            console.print(f"[green]{resultado.detalle}[/]")
+            if resultado.ruta:
+                console.print(f"[dim]{resultado.ruta}[/]")
+            return 0
+
+        console.print(f"[red]{resultado.detalle}[/]")
+        return 1
+
+    raise typer.Exit(code=_execute(_run))
+
+
+# ---------------------------------------------------------------------------
 # fetch
 # ---------------------------------------------------------------------------
 @cli.command()

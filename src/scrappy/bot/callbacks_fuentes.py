@@ -20,6 +20,8 @@ borrado silencioso del elemento equivocado.
 
 from __future__ import annotations
 
+import asyncio
+import html
 from typing import TYPE_CHECKING, Any
 
 from telegram import ForceReply, Message, Update
@@ -139,6 +141,7 @@ async def _pintar_ficha(update: Update, context: ContextTypes.DEFAULT_TYPE, fuen
             encendida=bool(getattr(app.settings, f"{fuente}_enabled", False)),
             campos=campos,
             cuantos=cuantos,
+            renovable=_tiene_sesion_renovable(fuente, app),
         ),
     )
 
@@ -183,6 +186,56 @@ async def _pintar_origenes(
         parse_mode=ParseMode.HTML,
         reply_markup=lista_origenes(
             fuente, campo, visibles, se_puede_anadir=len(valores) < MAXIMO_POR_LISTA
+        ),
+    )
+
+
+def _tiene_sesion_renovable(fuente: str, app: ScrappyApp) -> bool:
+    """Si esa fuente vive de una sesion que Scrappy pueda reextraer.
+
+    Hoy solo X con el backend `scrape`. TikTok e Instagram tambien usan cookies,
+    pero su flujo es otro y estan apagadas; cuando toque, esto es una linea y no
+    un refactor.
+    """
+    from scrappy.config.settings import XBackend
+
+    return fuente == "x" and app.settings.x_backend is XBackend.SCRAPE
+
+
+async def _renovar_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE, fuente: str) -> None:
+    """Reextrae la sesion de X del navegador del equipo, desde el movil.
+
+    Es el boton que evita tener que sentarse delante del ordenador a recordar
+    una invocacion de yt-dlp con la ruta de un perfil que no se llama como uno
+    cree. Lo hace el mismo codigo que `scrappy cookies` y que la TUI, asi que
+    los tres contestan exactamente lo mismo.
+    """
+    from scrappy.sources.x_cookies import renovar_cookies
+
+    app = _app_de(context)
+    query = update.callback_query
+    assert query is not None
+
+    if not _tiene_sesion_renovable(fuente, app):
+        await query.answer("Esa fuente no usa cookies renovables.", show_alert=True)
+        return
+
+    await query.answer("Renovando...")
+    # Lee una base de datos del navegador: bloquea, y el bucle del bot no puede
+    # quedarse parado mientras tanto.
+    resultado = await asyncio.to_thread(renovar_cookies, app.settings)
+    log.info("cookies_renovadas_desde_telegram", ok=resultado.ok)
+
+    campos = campos_de(fuente)
+    await query.edit_message_text(
+        f"{'✅' if resultado.ok else '⚠️'} <b>{fuente}</b>\n{html.escape(resultado.detalle)}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=ficha_fuente(
+            fuente,
+            encendida=bool(getattr(app.settings, f"{fuente}_enabled", False)),
+            campos=campos,
+            cuantos=dict.fromkeys((clave for clave, _ in campos), None),
+            renovable=True,
         ),
     )
 
@@ -399,6 +452,7 @@ async def despachar(
     """
     from scrappy.bot.keyboards import (
         ACCION_ANADIR,
+        ACCION_COOKIES,
         ACCION_FUENTE,
         ACCION_FUENTES,
         ACCION_INTERRUPTOR,
@@ -435,6 +489,8 @@ async def despachar(
             await _interruptor(update, context, fuente, encender=partes[2] == "1")
         case _ if accion == ACCION_INTERRUPTOR_OK:
             await _interruptor(update, context, fuente, encender=True, confirmado=True)
+        case _ if accion == ACCION_COOKIES:
+            await _renovar_cookies(update, context, fuente)
         case _ if accion == ACCION_ORIGENES:
             await query.answer()
             await _pintar_origenes(update, context, fuente, campo or 0)
@@ -522,9 +578,34 @@ async def on_respuesta(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if anadidos:
         log.info("origenes_anadidos", fuente=fuente, campo=clave, valores=anadidos)
         partes.append(f"Anadido a {fuente} · {etiqueta}: {', '.join(anadidos)}")
+        partes.extend(await _sondear_cuentas_de_x(app, fuente, clave, anadidos))
     if problemas:
         partes.append("No se anadio:\n" + "\n".join(f"· {p}" for p in problemas))
     await message.reply_text("\n\n".join(partes) or "No habia nada que anadir.")
+
+
+async def _sondear_cuentas_de_x(
+    app: ScrappyApp, fuente: str, clave: str, cuentas: list[str]
+) -> list[str]:
+    """Comprueba si las cuentas de X recien anadidas traen video, y lo dice.
+
+    **Avisa, no bloquea.** La cuenta ya esta guardada cuando esto corre: si el
+    sondeo dice que no publica videos, es informacion para decidir, no un veto.
+    Existe porque `@Memes` estuvo consultandose durante dias sin traer nada, y
+    eso no se ve en ningun sitio hasta que uno mira el log.
+    """
+    if fuente != "x" or clave != "accounts" or not _tiene_sesion_renovable(fuente, app):
+        return []
+
+    from scrappy.sources.x import sondear_cuenta
+
+    lineas = []
+    for cuenta in cuentas[:5]:  # mas de cinco de golpe seria una rafaga
+        try:
+            lineas.append(await sondear_cuenta(app.settings, cuenta))
+        except Exception as exc:  # pragma: no cover - el aviso no puede romper nada
+            log.warning("sondeo_fallido", cuenta=cuenta, error=str(exc))
+    return lineas
 
 
 async def _guardar_en_mensaje(

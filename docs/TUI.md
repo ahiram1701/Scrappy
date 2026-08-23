@@ -51,6 +51,8 @@ Si tienes el arranque automático **y** el scheduler de la ventana a la vez, el 
 
 **Configuración.** Qué `.env` se está usando, qué zona horaria se resolvió y dónde está el catálogo, con un botón para **recargar** sin reiniciar.
 
+**Renovar cookies de X.** Junto al de recargar. Reextrae la sesión de X del navegador que diga `SCRAPPY_X_COOKIES_BROWSER` y la deja lista, sin salir de la TUI y sin cerrar el navegador. Solo hace falta con `SCRAPPY_X_BACKEND=scrape`, y el botón lo dice si lo pulsas sin que aplique. Es el mismo código que `scrappy cookies` y que el botón de `/sources` en Telegram, así que los tres contestan lo mismo.
+
 ### Candidatos
 
 Es el `--dry-run` de la CLI convertido en algo navegable. **Explorar** (`e`) ejecuta el pipeline en seco —sin descargar ni publicar nada— y llena la tabla con lo que habría elegido.

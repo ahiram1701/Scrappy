@@ -33,15 +33,19 @@ import asyncio
 import json
 import re
 from datetime import UTC, datetime
-from http.cookiejar import LoadError, MozillaCookieJar
 from typing import Any
 
 import httpx
 
-from scrappy.config.settings import XBackend
+from scrappy.config.settings import Settings, XBackend
 from scrappy.core.errors import RateLimitedError, SourceError
 from scrappy.core.models import MediaKind, RawCandidate, utcnow
 from scrappy.sources.base import SourceAdapter, SourceStatus, rotar_objetivos
+from scrappy.sources.x_cookies import (
+    COOKIES_IMPRESCINDIBLES,
+    cookies_del_fichero,
+    renovar_cookies,
+)
 
 _SEARCH_URL = "https://api.x.com/2/tweets/search/recent"
 
@@ -49,10 +53,6 @@ _SEARCH_URL = "https://api.x.com/2/tweets/search/recent"
 # Backend `scrape`
 # ---------------------------------------------------------------------------
 _GRAPHQL_BASE = "https://x.com/i/api/graphql"
-
-#: De donde pueden salir las cookies utiles. Todo lo demas que traiga el fichero
-#: -la sesion del correo, rastreadores publicitarios- se queda fuera.
-_DOMINIOS_DE_X = frozenset({"x.com", "twitter.com"})
 
 #: El bundle JS de la web, de donde se leen los `queryId` en caliente.
 _BUNDLE = re.compile(
@@ -84,6 +84,15 @@ _FEATURES_DE_USUARIO = json.dumps(
 #: responde 403 al User-Agent honesto de Scrappy, asi que sin esto no hay
 #: fuente. Lo que si se mantiene es el ritmo, que es lo que de verdad importa.
 _UA_NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+
+
+class SesionInvalidaError(SourceError):
+    """La sesion de X ya no vale: cookies caducadas o revocadas.
+
+    Tiene tipo propio porque es el unico fallo de esta fuente que Scrappy puede
+    arreglar por su cuenta -reextrayendo del navegador- y hay que distinguirlo
+    de un perfil borrado o de un fallo de red.
+    """
 
 
 def _bearer_publico() -> str:
@@ -298,29 +307,19 @@ class XScrapeSource(SourceAdapter):
         super().__init__(*args, **kwargs)
         self._ids: dict[str, str] = {}
         self._queries: dict[str, str] | None = None
+        #: Si ya se renovo la sesion en esta ronda. Se renueva una sola vez.
+        self._renovado = False
 
     # ------------------------------------------------------------------
     # Sesion
     # ------------------------------------------------------------------
     def _cookies(self) -> dict[str, str]:
-        """Las cookies de X del fichero Netscape, o {} si no hay uno usable.
+        """Las cookies de X del fichero configurado, filtradas por dominio.
 
-        Se filtran por dominio a proposito. El fichero que produce
-        `--cookies-from-browser` trae **todo** el perfil del navegador -incluida
-        la sesion del correo de la cuenta-, y de aqui solo debe salir lo que X
-        necesita.
+        La mecanica vive en `x_cookies` porque el diagnostico y la validacion de
+        cuentas necesitan exactamente lo mismo.
         """
-        ruta = self.settings.cookies_file_for(self.name)
-        if ruta is None or not ruta.exists():
-            return {}
-
-        tarro = MozillaCookieJar(str(ruta))
-        try:
-            tarro.load(ignore_discard=True, ignore_expires=True)
-        except (OSError, LoadError) as exc:
-            self.log.warning("cookies_ilegibles", error=str(exc))
-            return {}
-        return {c.name: c.value or "" for c in tarro if c.domain.lstrip(".") in _DOMINIOS_DE_X}
+        return cookies_del_fichero(self.settings)
 
     def _headers(self, cookies: dict[str, str]) -> dict[str, str]:
         """Cabeceras que espera la GraphQL: el bearer publico y el csrf del `ct0`.
@@ -370,7 +369,7 @@ class XScrapeSource(SourceAdapter):
             )
 
         cookies = self._cookies()
-        faltan = [nombre for nombre in ("auth_token", "ct0") if not cookies.get(nombre)]
+        faltan = [nombre for nombre in COOKIES_IMPRESCINDIBLES if not cookies.get(nombre)]
         if faltan:
             # Sin `ct0` no hay csrf y X responde 403 a todo; sin `auth_token` no
             # hay sesion. Decirlo aqui evita descubrirlo tres horas despues.
@@ -418,16 +417,25 @@ class XScrapeSource(SourceAdapter):
         por_cuenta = max(budget // len(cuentas), 5)
 
         candidatos: list[RawCandidate] = []
+        self._renovado = False
         for indice, cuenta in enumerate(cuentas):
             if indice:
                 await asyncio.sleep(delay)
             try:
-                items = await self._medios(cuenta, por_cuenta, cookies)
+                items, cookies = await self._medios_con_renovacion(cuenta, por_cuenta, cookies)
             except RateLimitedError:
                 # Insistir con el resto de la lista solo confirma el patron que
                 # nos ha delatado.
                 self.log.warning("rate_limited_stop", cuenta=cuenta)
                 break
+            except SesionInvalidaError:
+                # **Se propaga a proposito.** Una sesion muerta no es un problema
+                # de esta cuenta sino de la fuente entera, asi que seguir con las
+                # demas no arreglaria nada. Y sobre todo: dejandola subir queda
+                # apuntada en los errores de la ronda, que es de donde el
+                # scheduler saca el aviso a Telegram. Tragarsela en un log
+                # significaria que nadie se entera nunca.
+                raise
             except SourceError as exc:
                 self.log.warning("cuenta_fallida", cuenta=cuenta, error=str(exc))
                 continue
@@ -435,6 +443,46 @@ class XScrapeSource(SourceAdapter):
 
         self.log.info("discovered", count=len(candidatos), cuentas=len(cuentas), de=len(todas))
         return candidatos
+
+    async def _medios_con_renovacion(
+        self, cuenta: str, cuantos: int, cookies: dict[str, str]
+    ) -> tuple[list[dict[str, Any]], dict[str, str]]:
+        """Los medios de una cuenta, renovando la sesion si hace falta.
+
+        Devuelve tambien las cookies en uso, que cambian si hubo renovacion: el
+        bucle tiene que seguir con las nuevas y no con las muertas.
+
+        Se renueva **una vez por ronda**. Si vuelve a fallar despues de haber
+        renovado, el error sube: reintentar en bucle contra quien acaba de
+        rechazarnos es justo lo que este proyecto lleva evitando.
+        """
+        try:
+            return await self._medios(cuenta, cuantos, cookies), cookies
+        except SesionInvalidaError:
+            if self._renovado:
+                raise
+            self._renovado = True
+            cookies = self._renovar()
+            return await self._medios(cuenta, cuantos, cookies), cookies
+
+    def _renovar(self) -> dict[str, str]:
+        """Reextrae la sesion del navegador y devuelve las cookies recargadas.
+
+        Si no se puede -no hay navegador configurado, o tampoco tiene sesion-,
+        se lanza `SesionInvalidaError` con el motivo real: el usuario tiene que
+        leer que hace falta entrar a X a mano, no un «403» otra vez.
+        """
+        self.log.warning("sesion_invalida", detail="reextrayendo del navegador")
+        resultado = renovar_cookies(self.settings)
+        if not resultado.ok:
+            raise SesionInvalidaError(self.name, resultado.detalle)
+
+        cookies = self._cookies()
+        if not cookies.get("auth_token") or not cookies.get("ct0"):
+            raise SesionInvalidaError(self.name, "la sesion renovada sigue sin servir")
+
+        self.log.info("sesion_renovada", de_x=resultado.de_x)
+        return cookies
 
     async def _medios(
         self, cuenta: str, cuantos: int, cookies: dict[str, str]
@@ -521,7 +569,14 @@ class XScrapeSource(SourceAdapter):
             )
             bundles = _BUNDLE.findall(portada.text)
             if not bundles:
-                raise SourceError(self.name, "no se encontro el bundle JS de x.com")
+                # X solo referencia el bundle en la portada de una sesion
+                # iniciada; sin sesion sirve una pagina de aterrizaje de 35 KB.
+                # Asi que esto NO es «no encontre el fichero»: es la primera
+                # senal de que la sesion murio, y llega antes que ningun 401.
+                raise SesionInvalidaError(
+                    self.name,
+                    "x.com no sirve la web de una sesion iniciada: la sesion no vale",
+                )
             js = await self.client.get(bundles[0], headers={"User-Agent": _UA_NAVEGADOR})
         except httpx.HTTPError as exc:
             raise SourceError(self.name, f"no se pudo leer el bundle de x.com: {exc}") from exc
@@ -565,10 +620,10 @@ class XScrapeSource(SourceAdapter):
             espera = max(float(reset) - utcnow().timestamp(), 0.0) if reset else None
             raise RateLimitedError(self.name, espera)
         if respuesta.status_code in (401, 403):
-            raise SourceError(
+            raise SesionInvalidaError(
                 self.name,
-                f"HTTP {respuesta.status_code}: la sesion ya no vale. Las cookies caducan; "
-                "reexportalas del perfil de navegador de la cuenta desechable.",
+                f"HTTP {respuesta.status_code}: la sesion ya no vale. Renuevala con "
+                "`scrappy cookies`, con el boton de /sources en Telegram, o desde la TUI.",
             )
         if respuesta.status_code != 200:
             raise SourceError(self.name, f"HTTP {respuesta.status_code}: {respuesta.text[:200]}")
@@ -657,6 +712,46 @@ def _parse_iso(value: Any) -> datetime:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
     except ValueError:
         return utcnow()
+
+
+async def sondear_cuenta(settings: Settings, cuenta: str) -> str:
+    """Cuantos videos trae una cuenta de X, para avisar al anadirla.
+
+    De la pestana de medios solo salen tweets con video: una cuenta que publique
+    solo fotos gasta su ronda y no trae nada. Paso de verdad con `@Memes`, que
+    dio 0 videos de 20 medios y se estuvo consultando durante dias.
+
+    Devuelve una frase, no un numero: la usan Telegram y la TUI tal cual, y lo
+    que hace falta decir cambia segun el caso. Nunca levanta -esto es un aviso
+    de cortesia, y que falle no puede impedir guardar la cuenta-.
+    """
+    from scrappy.config.loader import SourceConfig
+    from scrappy.sources.registry import build_http_client
+
+    limpio = cuenta.lstrip("@")
+    async with build_http_client() as client:
+        fuente = XScrapeSource(settings, SourceConfig(), client)
+        cookies = fuente._cookies()
+        if not cookies:
+            return f"@{limpio}: guardada, pero sin sesion de X no se pudo comprobar."
+        try:
+            items = await fuente._medios(limpio, 20, cookies)
+        except SesionInvalidaError:
+            return f"@{limpio}: guardada. La sesion de X no vale, asi que no se comprobo."
+        except SourceError as exc:
+            if "no existe la cuenta" in str(exc):
+                return f"@{limpio}: guardada, pero X dice que esa cuenta no existe."
+            return f"@{limpio}: guardada, no se pudo comprobar ({exc})."
+        videos = len(fuente._a_candidatos(items, limpio))
+
+    if not items:
+        return f"@{limpio}: guardada, pero no publica medios."
+    if not videos:
+        return (
+            f"@{limpio}: guardada, pero de sus ultimos {len(items)} medios "
+            "**ninguno es video**, asi que gastara su ronda sin traer nada."
+        )
+    return f"@{limpio}: {videos} videos de sus ultimos {len(items)} medios."
 
 
 def _sin_enlaces(texto: str) -> str:

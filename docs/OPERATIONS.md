@@ -53,6 +53,17 @@ Con el arranque automático activo **y** el scheduler de la ventana en marcha ha
 
 La única que de verdad no conviene saltarse es **actualizar yt-dlp**. Es la dependencia que más se mueve, porque las plataformas cambian por dentro constantemente.
 
+### La sesión de X, si usas el backend `scrape`
+
+No está en la tabla a propósito: **no es rutina, es reacción**. Scrappy renueva la sesión solo en cuanto detecta que X dejó de tratarle como sesión iniciada, y solo te escribe —una vez, a los administradores— cuando eso tampoco basta. Si recibes ese aviso:
+
+1. Abre el perfil de navegador de la cuenta desechable y entra en `x.com`.
+2. Pulsa **Renovar cookies** en `/sources`, o ejecuta `scrappy cookies`.
+
+`scrappy doctor` comprueba las dos cosas por separado: que el fichero tenga `auth_token` y `ct0`, y —con red— que la sesión responda de verdad. La segunda es la que dice la verdad: las cookies caducan dentro de un año, así que la fecha no avisa de nada.
+
+Si la cuenta desechable acaba bloqueada, no hay nada que renovar: toca crear otra. Ese riesgo es el precio de esta fuente y está en [LEGAL.md](LEGAL.md).
+
 ---
 
 ## Logs

@@ -84,19 +84,31 @@ async def avisar_arranque(
     if not app.settings.notify_on_start and not motivo:
         return 0
 
+    texto = texto_arranque(app, scheduler, escuchando=escuchando, motivo=motivo)
+    return await avisar_a_admins(app, texto)
+
+
+async def avisar_a_admins(app: ScrappyApp, texto: str) -> int:
+    """Manda un texto a cada administrador. Devuelve a cuantos les llego.
+
+    **Nunca levanta y nunca va al canal.** El canal es para el contenido;
+    meterle avisos de mantenimiento seria ruido para todo el que lo siga.
+
+    Lo comparten el aviso de arranque y el de la sesion de X caducada, que son
+    los dos casos en los que pasa algo fuera de Telegram y hay que enterarse
+    desde el movil.
+    """
     if app.bot is None:
-        log.debug("aviso_arranque_sin_bot")
+        log.debug("aviso_sin_bot")
         return 0
 
     admins = app.settings.admin_ids
     if not admins:
         log.info(
-            "aviso_arranque_sin_destino",
+            "aviso_sin_destino",
             detalle="SCRAPPY_TELEGRAM_ADMIN_IDS esta vacio y el aviso no va al canal",
         )
         return 0
-
-    texto = texto_arranque(app, scheduler, escuchando=escuchando, motivo=motivo)
 
     enviados = 0
     for admin in sorted(admins):
@@ -111,13 +123,13 @@ async def avisar_arranque(
             # Lo normal aqui es «chat not found»: ese administrador no le ha
             # escrito nunca al bot, y Telegram no deja empezar la conversacion
             # desde el otro lado.
-            log.warning("aviso_arranque_fallido", admin=admin, error=str(exc))
+            log.warning("aviso_fallido", admin=admin, error=str(exc))
             continue
         enviados += 1
 
     if enviados:
-        log.info("aviso_arranque_enviado", destinatarios=enviados)
+        log.info("aviso_enviado", destinatarios=enviados)
     return enviados
 
 
-__all__ = ["avisar_arranque", "texto_arranque"]
+__all__ = ["avisar_a_admins", "avisar_arranque", "texto_arranque"]

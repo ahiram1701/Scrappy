@@ -5,6 +5,24 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Añadido — la sesión de X se renueva sola
+
+X es la única credencial del proyecto que caduca sin avisar, y hasta ahora arreglarla pedía acordarse de demasiadas cosas: de que existe un perfil de Firefox llamado `burner`, de que su carpeta se llama `pTbhVY6z.Profile 1` y no `burner`, de la invocación exacta de yt-dlp, y de filtrar el fichero para que no viajara la sesión del correo. Dentro de tres meses eso no se acuerda nadie.
+
+- **`scrappy cookies`** reextrae la sesión y la deja lista. No hace falta cerrar el navegador: yt-dlp copia la base de datos antes de leerla.
+- **El mismo botón en la TUI y en `/sources`.** Desde el móvil le dices «renueva» y Scrappy relee el perfil del navegador del equipo. Las tres caras llaman al mismo código, así que dicen exactamente lo mismo.
+- **Se renueva sola.** Cuando X deja de tratarle como sesión iniciada, Scrappy reextrae, reintenta la ronda y sigue. Una vez por ronda, no en bucle.
+- **Te avisa solo si hace falta que hagas algo**: una vez, a los administradores, cuando la renovación automática tampoco bastó. Se rearma cuando vuelve a funcionar.
+- **Basta con el nombre del perfil.** `SCRAPPY_X_COOKIES_BROWSER=firefox:burner` funciona; la carpeta la resuelve leyendo `profiles.ini`.
+- **`scrappy doctor` lo comprueba** —y con él `/start` y la TUI—, en dos pasos: que el fichero tenga `auth_token` y `ct0`, y que la sesión responda de verdad. Lo segundo es lo que importa: las cookies caducan dentro de un año, así que la fecha no avisa de nada.
+- **Al añadir cuentas de X se comprueban.** Te dice cuántos vídeos traen de sus últimos medios. Avisa, no bloquea. Existe por `@Memes`, que estuvo consultándose días dando 0 vídeos de 20 medios porque solo publica fotos.
+
+### Arreglado — la sesión muerta se notaba antes del 401, y la renovación no llegaba a saltar
+
+X solo referencia su bundle JS en la portada de una sesión iniciada; sin sesión sirve una página de aterrizaje. Como los `queryId` salen de ese bundle, la fuente moría con «no se encontró el bundle» —un error genérico— y la renovación automática no se disparaba nunca. Ahora eso es lo que es: la primera señal de que la sesión murió.
+
+Y una sesión muerta **se propaga** en vez de quedarse en un log por cuenta. No es un problema de una cuenta sino de la fuente entera, y tragárselo significaba que el aviso a Telegram no salía jamás.
+
 ### Arreglado — el backend `scrape` de X no funcionaba, y no podía
 
 Estaba escrito sobre una premisa falsa: que yt-dlp sabe enumerar perfiles de X. No lo sabe. Sus extractores de Twitter cubren tweets sueltos, cards, spaces y broadcasts — ninguno hace timelines. Como `XScrapeSource` construía URLs de perfil, la fuente devolvía `Unsupported URL` en cada ronda, con cookies o sin ellas. No es que se rompiera con el tiempo: **no funcionó nunca**, y nadie lo vio porque venía desactivada y fallaba en un `warning`.

@@ -117,9 +117,10 @@ Giphy no expone ningún contador de popularidad, así que el ranking usa la posi
 | `ENABLE_TOS_RISKY_SOURCES` | `false` | **Interruptor maestro.** Sin esto en `true`, YouTube, X-scrape, TikTok e Instagram no arrancan aunque estén habilitadas. |
 | `YOUTUBE_ENABLED` | `false` | Shorts vía yt-dlp, sin clave ni cookies. Va tras el flag porque descargar de YouTube también incumple sus términos, aunque el riesgo práctico sea mucho menor. |
 | `X_ENABLED` | `false` | |
-| `X_BACKEND` | `api` | `api` (oficial, requiere tier de pago para buscar) o `scrape` (yt-dlp, contra ToS). |
+| `X_BACKEND` | `api` | `api` (oficial, requiere tier de pago para buscar) o `scrape` (API interna de la web de X con las cookies de una sesión, contra ToS). |
 | `X_BEARER_TOKEN` | — | Solo para el backend `api`. |
-| `X_COOKIES_FILE` | — | Solo para `scrape`. Formato Netscape. |
+| `X_COOKIES_FILE` | — | Solo para `scrape`. Formato Netscape. **De una cuenta desechable.** |
+| `X_COOKIES_BROWSER` | — | De dónde reextraerlas cuando caduquen: `firefox:burner`, `firefox`, `edge`. Vale el **nombre** del perfil, no hace falta su carpeta. Con esto puesto Scrappy renueva la sesión solo; sin esto, hay que hacerlo a mano. |
 | `TIKTOK_ENABLED` | `false` | |
 | `TIKTOK_COOKIES_FILE` | — | Opcional, pero mejora mucho la fiabilidad. |
 | `INSTAGRAM_ENABLED` | `false` | |

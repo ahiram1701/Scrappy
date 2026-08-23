@@ -23,7 +23,12 @@ from scrappy.config.loader import SourceConfig
 from scrappy.config.settings import Settings, XBackend
 from scrappy.core.errors import RateLimitedError, SourceError
 from scrappy.core.models import MediaKind
-from scrappy.sources.x import XApiSource, XScrapeSource, build_x_source
+from scrappy.sources.x import (
+    SesionInvalidaError,
+    XApiSource,
+    XScrapeSource,
+    build_x_source,
+)
 
 SEARCH_URL = "https://api.x.com/2/tweets/search/recent"
 
@@ -552,12 +557,10 @@ async def test_la_sesion_caducada_se_explica(scrape_settings: Settings) -> None:
 
     fuente = _fuente(scrape_settings, _cuentas(accounts=["uno"]))
 
-    # Una cuenta rota no tumba la fuente, asi que el mensaje se comprueba en la
-    # excepcion, que es donde vive la explicacion.
-    with pytest.raises(SourceError, match="reexport"):
+    # Tipo propio: es el unico fallo de esta fuente que Scrappy puede arreglar
+    # solo, y el mensaje dice como, no un «403» a secas.
+    with pytest.raises(SesionInvalidaError, match="scrappy cookies"):
         await fuente._medios("uno", 10, fuente._cookies())
-
-    assert await fuente.discover(30) == []
 
 
 # ---------------------------------------------------------------------------
@@ -596,3 +599,95 @@ async def test_los_query_ids_se_pueden_fijar_a_mano(scrape_settings: Settings) -
     assert len(candidatos) == 1
     # Con los ids puestos no hace falta ir a buscar el bundle.
     assert portada.call_count == 0
+
+
+@respx.mock
+async def test_sin_bundle_tambien_es_sesion_muerta(scrape_settings: Settings) -> None:
+    """La sesion muerta se nota ANTES del 401, y ahi estaba el agujero.
+
+    X solo referencia su bundle JS en la portada de una sesion iniciada; sin
+    sesion sirve una pagina de aterrizaje. Como los `queryId` salen de ese
+    bundle, la fuente moria con «no se encontro el bundle» -un error generico- y
+    la renovacion automatica no llegaba a dispararse nunca.
+    """
+    respx.get("https://x.com/").mock(return_value=httpx.Response(200, html="<h1>Entra</h1>"))
+
+    fuente = _fuente(scrape_settings, _cuentas(accounts=["uno"]))
+
+    with pytest.raises(SesionInvalidaError):
+        await fuente._query_ids(fuente._cookies())
+
+
+@respx.mock
+async def test_la_sesion_muerta_se_renueva_sola_y_se_reintenta(
+    scrape_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """El punto de todo esto: que no haga falta que nadie haga nada."""
+    _montar_descubrimiento()
+    _montar_usuario()
+    respx.get(f"{GRAPHQL}/{QUERY_MEDIOS}/UserMedia").mock(
+        side_effect=[
+            httpx.Response(403, json={}),
+            httpx.Response(200, json=_timeline(_tweet())),
+        ]
+    )
+
+    renovaciones = []
+
+    def _renovar_falso(_settings: Settings) -> Any:
+        from scrappy.sources.x_cookies import RenovacionCookies
+
+        renovaciones.append(1)
+        return RenovacionCookies(True, "renovada", de_x=17)
+
+    monkeypatch.setattr("scrappy.sources.x.renovar_cookies", _renovar_falso)
+
+    candidatos = await _fuente(scrape_settings, _cuentas(accounts=["uno"])).discover(30)
+
+    assert renovaciones == [1]
+    assert len(candidatos) == 1
+
+
+@respx.mock
+async def test_no_se_renueva_dos_veces_en_la_misma_ronda(
+    scrape_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Insistir contra quien acaba de rechazarnos es lo que se lleva evitando."""
+    _montar_descubrimiento()
+    _montar_usuario()
+    respx.get(f"{GRAPHQL}/{QUERY_MEDIOS}/UserMedia").mock(return_value=httpx.Response(403, json={}))
+
+    renovaciones = []
+
+    def _renovar_falso(_settings: Settings) -> Any:
+        from scrappy.sources.x_cookies import RenovacionCookies
+
+        renovaciones.append(1)
+        return RenovacionCookies(True, "renovada", de_x=17)
+
+    monkeypatch.setattr("scrappy.sources.x.renovar_cookies", _renovar_falso)
+
+    with pytest.raises(SesionInvalidaError):
+        await _fuente(scrape_settings, _cuentas()).discover(30)
+    assert len(renovaciones) == 1
+
+
+@respx.mock
+async def test_si_el_navegador_tampoco_tiene_sesion_se_dice(
+    scrape_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ahi si hace falta una persona, y el mensaje tiene que decir cual es."""
+    _montar_descubrimiento()
+    _montar_usuario()
+    respx.get(f"{GRAPHQL}/{QUERY_MEDIOS}/UserMedia").mock(return_value=httpx.Response(403, json={}))
+
+    def _renovar_falso(_settings: Settings) -> Any:
+        from scrappy.sources.x_cookies import RenovacionCookies
+
+        return RenovacionCookies(False, "no hay sesion de X: faltan auth_token")
+
+    monkeypatch.setattr("scrappy.sources.x.renovar_cookies", _renovar_falso)
+
+    fuente = _fuente(scrape_settings, _cuentas(accounts=["uno"]))
+    with pytest.raises(SesionInvalidaError, match="auth_token"):
+        await fuente._medios_con_renovacion("uno", 10, fuente._cookies())

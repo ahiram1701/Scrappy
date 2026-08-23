@@ -6,6 +6,7 @@ alimentan `scrappy health` y el comando `/sources` del bot. Aqui solo se pintan.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -66,6 +67,7 @@ class DashboardScreen(Screen[None]):
                 yield Static(id="estado-config")
                 with Horizontal(id="acciones-config"):
                     yield Button("Recargar configuracion", id="recargar-config")
+                    yield Button("Renovar cookies de X", id="renovar-cookies")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -232,6 +234,10 @@ class DashboardScreen(Screen[None]):
             await self.refresh_data()
             return
 
+        if event.button.id == "renovar-cookies":
+            await self._renovar_cookies()
+            return
+
         if event.button.id in {"autoarranque-on", "autoarranque-sistema", "autoarranque-off"}:
             await self._cambiar_autoarranque(boton=event.button.id)
             return
@@ -269,6 +275,36 @@ class DashboardScreen(Screen[None]):
 
         self._refresh_scheduler()
         self._refresh_autoarranque()
+
+    async def _renovar_cookies(self) -> None:
+        """Reextrae la sesion de X del navegador, sin salir de la TUI.
+
+        Es la unica credencial del proyecto que caduca sola, y hasta ahora
+        arreglarla obligaba a recordar una invocacion de yt-dlp con la ruta de
+        un perfil que no se llama como uno cree. La logica esta en
+        `sources.x_cookies`, compartida con `scrappy cookies` y con el boton de
+        Telegram: las tres dicen exactamente lo mismo.
+        """
+        from scrappy.config.settings import XBackend
+        from scrappy.sources.x_cookies import renovar_cookies
+
+        scrappy = self.tui.scrappy
+        if scrappy is None:
+            self.notify("Scrappy no esta montado.", severity="warning")
+            return
+        if scrappy.settings.x_backend is not XBackend.SCRAPE:
+            # El boton esta a la vista siempre; explicar por que no aplica es
+            # mejor que esconderlo y que nadie sepa que existe.
+            self.notify("Solo hace falta con SCRAPPY_X_BACKEND=scrape.", severity="information")
+            return
+
+        # Bloquea unos segundos leyendo una base de datos: fuera del bucle.
+        resultado = await asyncio.to_thread(renovar_cookies, scrappy.settings)
+        self.notify(
+            resultado.detalle,
+            severity="information" if resultado.ok else "error",
+            timeout=10,
+        )
 
     async def _cambiar_autoarranque(self, *, boton: str) -> None:
         """Registra o quita el arranque automatico, confirmando antes.

@@ -474,3 +474,53 @@ async def test_apagar_una_de_riesgo_es_inmediato(app: ScrappyApp, entorno: Any) 
     await cf.despachar(FakeUpdate(FakeQuery()), FakeContext(app), "so", ["so", "youtube", "0"])
 
     assert "SCRAPPY_YOUTUBE_ENABLED=false" in env_path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Renovar la sesion de X desde el movil
+# ---------------------------------------------------------------------------
+def test_el_boton_de_renovar_solo_sale_donde_aplica() -> None:
+    """Un boton que no hace nada es peor que no tener boton."""
+    from scrappy.bot.keyboards import ficha_fuente
+
+    def _etiquetas(renovable: bool) -> list[str]:
+        teclado = ficha_fuente(
+            "x",
+            encendida=True,
+            campos=(("accounts", "cuentas"),),
+            cuantos={"accounts": 2},
+            renovable=renovable,
+        )
+        return [b.text for fila in teclado.inline_keyboard for b in fila]
+
+    assert any("Renovar" in e for e in _etiquetas(True))
+    assert not any("Renovar" in e for e in _etiquetas(False))
+
+
+async def test_renovar_desde_telegram_usa_el_mismo_codigo(
+    app: ScrappyApp, monkeypatch: Any
+) -> None:
+    """El boton, `scrappy cookies` y la TUI tienen que decir lo mismo."""
+    from scrappy.config.settings import XBackend
+    from scrappy.sources.x_cookies import RenovacionCookies
+
+    app.settings = app.settings.model_copy(
+        update={"x_backend": XBackend.SCRAPE, "enable_tos_risky_sources": True}
+    )
+    monkeypatch.setattr(
+        "scrappy.sources.x_cookies.renovar_cookies",
+        lambda _s: RenovacionCookies(True, "Sesion de X renovada: 17 cookies guardadas", de_x=17),
+    )
+
+    query = FakeQuery()
+    await cf.despachar(FakeUpdate(query), FakeContext(app), "sck", ["sck", "x"])
+
+    assert "17 cookies" in query.textos[-1]
+
+
+async def test_no_se_renueva_lo_que_no_tiene_sesion(app: ScrappyApp) -> None:
+    query = FakeQuery()
+
+    await cf.despachar(FakeUpdate(query), FakeContext(app), "sck", ["sck", "reddit"])
+
+    assert "no usa cookies" in query.respuestas[-1]

@@ -312,11 +312,21 @@ El ⚠️ está porque el 🔒 desaparece en cuanto pones `SCRAPPY_ENABLE_TOS_RI
 
 **2. La ficha.** El estado de esa fuente, el interruptor y un botón por cada campo de contenido, con cuántos valores tiene: `subreddits (8)`, `busquedas (3)`.
 
+En X con el backend `scrape` sale además **🔄 Renovar cookies**. Esa fuente vive de la sesión de una cuenta desechable, y esa sesión se muere; el botón la reextrae del navegador del equipo sin que tengas que sentarte delante. Solo aparece donde aplica.
+
+Al **añadir cuentas de X**, el bot las comprueba y te dice cuántos vídeos traen de sus últimos medios. Avisa, no bloquea: la cuenta se guarda igual. Existe porque de la pestaña de medios solo salen tweets con vídeo, y una cuenta que publique solo fotos gasta su ronda sin traer nada.
+
 **3. Los orígenes.** Un botón ❌ por valor para quitarlo, y ➕ para añadir. Quitar **pregunta antes** y enseña el valor releído del fichero; si la lista se quedara vacía, lo avisa.
 
 Para **añadir**, el bot te pide el valor y tú **respondes a ese mensaje**. Puedes poner varios, uno por línea. Se acepta como lo escribes —`r/memes`, `#gatos`, `@cuenta`, o una URL de Reddit pegada— y se guarda ya limpio: guardar `r/memes` tal cual produce una URL rota que no se nota hasta la ronda siguiente. Lo que no sirve se rechaza diciendo por qué, y lo que ya estaba no se duplica.
 
 > Responder a un mensaje no existe en los canales. Añadir se hace en tu chat privado con el bot; ver y quitar funcionan en cualquier sitio.
+
+### Lo que el bot te dice sin que preguntes
+
+Aparte del aviso de arranque, hay uno más, y va a los administradores —nunca al canal—:
+
+**La sesión de X dejó de valer.** Scrappy ya intentó renovarla solo releyendo el navegador; este mensaje solo llega cuando eso tampoco bastó, que es el único caso en el que hace falta que una persona haga algo. Se manda **una vez**, no en cada ronda: un aviso que se repite deja de leerse. Dice qué pasó y qué hacer, y se rearma solo cuando la fuente vuelve a funcionar.
 
 ### Qué se aplica cuándo
 

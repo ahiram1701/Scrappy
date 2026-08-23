@@ -289,6 +289,96 @@ def check_enabled_sources(settings: Settings) -> Check:
     return Check(nombre, CheckStatus.OK, ", ".join(activas))
 
 
+def check_x_cookies(settings: Settings) -> Check:
+    """La sesion de X, que es lo unico de esa fuente que caduca solo.
+
+    No se mira la fecha de caducidad a proposito. Se comprobo contra el fichero
+    real: `auth_token` caduca dentro de **un ano**, asi que un aviso por fecha
+    no llegaria nunca a tiempo de nada. Lo que mata la sesion es que X la
+    invalide, y eso solo se ve pidiendole algo (ver `check_x_sesion`).
+    """
+    from scrappy.config.settings import XBackend
+    from scrappy.sources.x_cookies import COOKIES_IMPRESCINDIBLES, cookies_del_fichero
+
+    nombre = "Sesion de X"
+    if not settings.x_enabled:
+        return Check(nombre, CheckStatus.SKIPPED, "X desactivada")
+    if settings.x_backend is not XBackend.SCRAPE:
+        return Check(nombre, CheckStatus.SKIPPED, "backend `api`: no usa cookies")
+
+    arreglo = (
+        "ejecuta `scrappy cookies` (o el boton «Renovar cookies» de /sources). "
+        "Necesita SCRAPPY_X_COOKIES_BROWSER, por ejemplo `firefox:burner`"
+    )
+
+    ruta = settings.x_cookies_file
+    if ruta is None:
+        return Check(nombre, CheckStatus.ERROR, "falta SCRAPPY_X_COOKIES_FILE", arreglo)
+    if not ruta.exists():
+        return Check(nombre, CheckStatus.ERROR, f"no existe {ruta}", arreglo)
+
+    cookies = cookies_del_fichero(settings)
+    faltan = [n for n in COOKIES_IMPRESCINDIBLES if not cookies.get(n)]
+    if faltan:
+        return Check(
+            nombre,
+            CheckStatus.ERROR,
+            f"el fichero no trae {' ni '.join(faltan)}",
+            arreglo,
+        )
+
+    if not settings.x_cookies_browser.strip():
+        # No impide funcionar hoy, pero el dia que la sesion muera habra que
+        # hacerlo todo a mano. Avisar ahora cuesta una linea.
+        return Check(
+            nombre,
+            CheckStatus.WARNING,
+            "la sesion esta, pero no se puede renovar sola",
+            "pon SCRAPPY_X_COOKIES_BROWSER (por ejemplo `firefox:burner`) y "
+            "Scrappy la renovara solo cuando caduque",
+        )
+    return Check(nombre, CheckStatus.OK, "sesion completa, se renueva sola al caducar")
+
+
+async def check_x_sesion(settings: Settings) -> Check:
+    """Si la sesion de X sirve de verdad. Una peticion, no mas.
+
+    Es la unica forma honesta de saberlo: un fichero con las cookies correctas
+    puede estar muerto desde ayer si X las revoco.
+    """
+    from scrappy.config.settings import XBackend
+
+    nombre = "Sesion de X (en vivo)"
+    if not settings.x_enabled or settings.x_backend is not XBackend.SCRAPE:
+        return Check(nombre, CheckStatus.SKIPPED, "no aplica")
+
+    from scrappy.config.loader import SourceConfig
+    from scrappy.core.errors import SourceError
+    from scrappy.sources.registry import build_http_client
+    from scrappy.sources.x import SesionInvalidaError, XScrapeSource
+
+    async with build_http_client() as client:
+        fuente = XScrapeSource(settings, SourceConfig(), client)
+        cookies = fuente._cookies()
+        if not cookies:
+            return Check(nombre, CheckStatus.SKIPPED, "sin cookies que probar")
+        try:
+            queries = await fuente._query_ids(cookies)
+            await fuente._user_id("x", cookies, queries)
+        except SesionInvalidaError as exc:
+            return Check(
+                nombre,
+                CheckStatus.ERROR,
+                str(exc),
+                "renuevala con `scrappy cookies` o el boton de /sources",
+            )
+        except SourceError as exc:
+            # Que X este caida o cambie el bundle no es culpa de la sesion.
+            return Check(nombre, CheckStatus.WARNING, f"no se pudo comprobar: {exc}")
+
+    return Check(nombre, CheckStatus.OK, "la sesion responde")
+
+
 # ---------------------------------------------------------------------------
 # Comprobaciones que hablan con Telegram
 # ---------------------------------------------------------------------------
@@ -394,11 +484,15 @@ async def run_diagnostics(settings: Settings, *, use_network: bool = True) -> Di
         check_enabled_sources(settings),
         check_reddit_user_agent(settings),
         check_sources_config(settings),
+        check_x_cookies(settings),
     ]
 
     # Solo se llama a Telegram si el formato ya era correcto: si el token tiene
     # una errata evidente, la llamada solo anadiria un error redundante.
     formato_ok = all(check.status is not CheckStatus.ERROR for check in checks[:2])
+    if use_network:
+        checks.append(await check_x_sesion(settings))
+
     if use_network and formato_ok and token:
         checks.extend(await check_telegram(settings))
     elif use_network and not formato_ok:

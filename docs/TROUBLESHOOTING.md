@@ -166,6 +166,26 @@ El esperado. **El tier gratuito de la API de X no permite buscar posts**; el end
 
 Alternativa: `SCRAPPY_X_BACKEND=scrape`, que no cuesta dinero pero incumple los términos de X. Lee [LEGAL.md](LEGAL.md) antes.
 
+### X con `scrape` no devuelve nada
+
+Por orden de probabilidad:
+
+1. **La sesión murió.** Es lo normal, y Scrappy intenta arreglarlo solo: cuando detecta que X ya no le trata como sesión iniciada, reextrae las cookies del navegador y reintenta la ronda. Si eso tampoco basta, te avisa por Telegram **una vez** y `scrappy doctor` lo marca en rojo. Se arregla entrando a x.com en el perfil de la cuenta desechable y pulsando **Renovar cookies** en `/sources` — o con:
+
+   ```
+   scrappy cookies
+   ```
+
+2. **La cuenta no publica vídeos.** De la pestaña de medios solo salen tweets con vídeo; una cuenta que publique solo fotos gasta su ronda y no trae nada. Pasó con `@Memes`: 0 vídeos de 20 medios. Al añadir cuentas desde Telegram, Scrappy te lo dice.
+
+3. **Solo se consulta una cuenta por ronda.** Es deliberado (`objetivos_por_ronda` en `sources.yaml`): las cuentas se rotan y la lista entera se cubre en varias rondas. Si tienes dos cuentas y una no da vídeos, una ronda de cada dos vendrá vacía.
+
+4. **Cambiaron los `queryId` de X.** Se leen solos del bundle JS de su web, así que esto debería arreglarse sin tocar nada. Si el bundle cambia de forma, el log dirá «el bundle de x.com no trae los queryId esperados» y se pueden fijar a mano en `sources.yaml` con `query_id_user` y `query_id_media`.
+
+### «could not find firefox cookies database in ...\Profiles\burner»
+
+El nombre del perfil que ves en el navegador **no es el de su carpeta**: `burner` vive en algo como `pTbhVY6z.Profile 1`. `scrappy cookies` lo traduce solo leyendo `profiles.ini`, así que en `SCRAPPY_X_COOKIES_BROWSER` puedes poner el nombre. Si invocas yt-dlp a mano, ahí sí necesitas la ruta completa.
+
 ### TikTok / Instagram no devuelven nada
 
 Por orden de probabilidad:

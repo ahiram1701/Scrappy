@@ -204,3 +204,83 @@ def test_el_render_incluye_el_arreglo_solo_cuando_hace_falta() -> None:
 
     assert "->" in fallo.render()
     assert "->" not in bien.render()
+
+
+# ---------------------------------------------------------------------------
+# La sesion de X
+#
+# Escrita una vez aqui y pintada por `scrappy doctor`, el /start del bot y la
+# TUI. Es la unica credencial del proyecto que caduca sola.
+# ---------------------------------------------------------------------------
+def _con_x(settings: Settings, tmp_path: Path, **extra: object) -> Settings:
+    from scrappy.config.settings import XBackend
+
+    base: dict[str, object] = {"x_enabled": True, "x_backend": XBackend.SCRAPE}
+    base.update(extra)
+    return settings.model_copy(update=base)
+
+
+def _fichero_de_cookies(tmp_path: Path, *nombres: str) -> Path:
+    ruta = tmp_path / "x.cookies.txt"
+    lineas = ["# Netscape HTTP Cookie File"]
+    lineas += [f".x.com\tTRUE\t/\tTRUE\t0\t{n}\tvalor" for n in nombres]
+    ruta.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    return ruta
+
+
+def test_x_apagada_no_se_comprueba(settings: Settings) -> None:
+    from scrappy.diagnostics import check_x_cookies
+
+    assert check_x_cookies(settings).status is CheckStatus.SKIPPED
+
+
+def test_el_backend_api_no_usa_cookies(settings: Settings) -> None:
+    from scrappy.config.settings import XBackend
+    from scrappy.diagnostics import check_x_cookies
+
+    con_api = settings.model_copy(update={"x_enabled": True, "x_backend": XBackend.API})
+
+    assert check_x_cookies(con_api).status is CheckStatus.SKIPPED
+
+
+def test_sin_fichero_de_cookies_es_un_fallo(settings: Settings, tmp_path: Path) -> None:
+    from scrappy.diagnostics import check_x_cookies
+
+    check = check_x_cookies(_con_x(settings, tmp_path))
+
+    assert check.status is CheckStatus.ERROR
+    # Lo que importa de un fallo es la linea de como arreglarlo.
+    assert "scrappy cookies" in check.fix
+
+
+def test_unas_cookies_incompletas_se_detectan(settings: Settings, tmp_path: Path) -> None:
+    """Sin `ct0` no hay csrf, y X responde 403 a todo."""
+    from scrappy.diagnostics import check_x_cookies
+
+    ruta = _fichero_de_cookies(tmp_path, "auth_token")
+    check = check_x_cookies(_con_x(settings, tmp_path, x_cookies_file=ruta))
+
+    assert check.status is CheckStatus.ERROR
+    assert "ct0" in check.detail
+
+
+def test_sin_navegador_se_avisa_pero_no_bloquea(settings: Settings, tmp_path: Path) -> None:
+    """Funciona hoy; el problema llega el dia que caduque y no haya de donde."""
+    from scrappy.diagnostics import check_x_cookies
+
+    ruta = _fichero_de_cookies(tmp_path, "auth_token", "ct0")
+    check = check_x_cookies(_con_x(settings, tmp_path, x_cookies_file=ruta))
+
+    assert check.status is CheckStatus.WARNING
+    assert "SCRAPPY_X_COOKIES_BROWSER" in check.fix
+
+
+def test_todo_en_orden(settings: Settings, tmp_path: Path) -> None:
+    from scrappy.diagnostics import check_x_cookies
+
+    ruta = _fichero_de_cookies(tmp_path, "auth_token", "ct0")
+    check = check_x_cookies(
+        _con_x(settings, tmp_path, x_cookies_file=ruta, x_cookies_browser="firefox:burner")
+    )
+
+    assert check.status is CheckStatus.OK

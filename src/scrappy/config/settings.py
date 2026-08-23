@@ -131,6 +131,10 @@ class Settings(BaseSettings):
     x_backend: XBackend = XBackend.API
     x_bearer_token: SecretStr = SecretStr("")
     x_cookies_file: Path | None = None
+    #: De donde reextraer las cookies cuando caduquen: `firefox:burner`,
+    #: `firefox`, `edge`... Misma sintaxis que `--cookies-from-browser` de
+    #: yt-dlp. Vacio significa que la renovacion automatica no puede actuar.
+    x_cookies_browser: str = ""
 
     # YouTube no pide clave ni cookies, pero descargar de ahi tambien incumple
     # sus terminos, asi que va detras del mismo flag por coherencia.

@@ -15,6 +15,7 @@ Dos decisiones de comportamiento que conviene conocer:
 
 from __future__ import annotations
 
+import html
 from datetime import timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -35,6 +36,8 @@ class PipelineScheduler:
     """Lanza el pipeline cada `SCRAPPY_SCHEDULE_INTERVAL_MINUTES`."""
 
     def __init__(self, app: ScrappyApp) -> None:
+        #: Para no repetir el aviso de sesion en cada ronda.
+        self._sesion_avisada = False
         self._app = app
         # En la zona del usuario, no en UTC. Con un intervalo en minutos da
         # igual para el disparo, pero no para lo que se lee por pantalla: el
@@ -93,6 +96,7 @@ class PipelineScheduler:
         try:
             report = await self._app.run_pipeline()
             log.info("scheduled_run_done", summary=report.summary_line())
+            await self._avisar_si_la_sesion_murio(report.errors)
         except Exception as exc:  # el scheduler debe sobrevivir a cualquier fallo
             log.exception("scheduled_run_failed", error=str(exc))
             # El exito lo apunta `run_pipeline`, pero el fallo no llega alli:
@@ -100,6 +104,36 @@ class PipelineScheduler:
             # ronda buena mientras las tres siguientes revientan, que es peor
             # que no decir nada.
             self._app.ultima_ronda = UltimaRonda(resumen=f"fallo: {exc}", correcta=False)
+
+    async def _avisar_si_la_sesion_murio(self, errores: list[str]) -> None:
+        """Avisa **una vez** de que la sesion de X dejo de valer.
+
+        La fuente ya intenta renovarla sola releyendo el navegador; esto solo
+        salta cuando eso tampoco basto, que es el unico caso en el que hace
+        falta que una persona haga algo. Avisar en cada ronda de lo mismo
+        convierte el aviso en ruido y deja de leerse.
+        """
+        rota = any("[x]" in e and "sesion" in e.lower() for e in errores)
+        if not rota:
+            # Cuando se arregla se rearma, para que el proximo corte vuelva a
+            # avisar en vez de callarse para siempre.
+            self._sesion_avisada = False
+            return
+        if self._sesion_avisada:
+            return
+
+        from scrappy.bot.avisos import avisar_a_admins
+
+        self._sesion_avisada = True
+        motivo = next((e for e in errores if "[x]" in e), "sin detalle")
+        await avisar_a_admins(
+            self._app,
+            "⚠️ <b>La sesion de X dejo de valer</b>\n"
+            f"{html.escape(motivo)}\n\n"
+            "Intento renovarla sola desde el navegador y no basto. Abre el perfil "
+            "de la cuenta desechable, entra en x.com, y luego pulsa "
+            "<b>Renovar cookies</b> en /sources.",
+        )
 
     def shutdown(self) -> None:
         if self._scheduler.running:

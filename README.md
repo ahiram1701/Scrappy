@@ -47,6 +47,8 @@ Este bot **republica trabajo de otras personas**. Las fuentes están en tres niv
 | ✅ **Con clave gratuita** | Reddit *(feeds RSS)*, Imgur, Giphy | Registro autoservicio o ni eso |
 | ⚠️ **Detrás de un flag** | YouTube, TikTok, Instagram, X-scrape | **Incumplen los términos** de sus plataformas. Vienen desactivadas y hace falta `SCRAPPY_ENABLE_TOS_RISKY_SOURCES=true` a mano. El proyecto no lo hace por ti |
 
+Sobre X: yt-dlp **no sabe enumerar timelines**, así que el backend `scrape` va por la API interna de la web con las cookies de una cuenta desechable, y descarga con yt-dlp. Es la fuente más frágil del proyecto y la que más mantenimiento pide; Scrappy renueva la sesión solo cuando caduca ([ADR-0003](docs/adr/0003-x-doble-backend.md)).
+
 Sobre Reddit: su registro de aplicaciones **se cerró en noviembre de 2025** y los endpoints `.json` devuelven 403 desde mayo de 2026. Scrappy usa los feeds Atom públicos, que siguen abiertos y no piden credenciales ([ADR-0009](docs/adr/0009-reddit-por-rss.md)).
 
 El contenido pertenece a quien lo creó. Scrappy siempre acredita al autor y enlaza al original, pero eso no equivale a un permiso. **Lee [docs/LEGAL.md](docs/LEGAL.md)** antes de publicar nada fuera de un canal privado.

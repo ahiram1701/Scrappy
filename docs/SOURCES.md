@@ -87,6 +87,18 @@ class MiPlataformaSource(YtDlpSource):
 
 ---
 
+## Caso C: la plataforma tiene una API, pero no para ti
+
+Es el caso de X, y el más incómodo de los tres: hay una API interna —la que usa su propia web— a la que se puede llamar con las cookies de una sesión. Funciona, incumple los términos, y **se romperá**. Antes de escribir una fuente así, comprueba que no hay ninguna de las dos anteriores.
+
+Lo que se aprendió montando [`x.py`](../src/scrappy/sources/x.py), que es lo que conviene repetir:
+
+- **Descubrir y descargar pueden ir por caminos distintos.** yt-dlp no sabe enumerar timelines de X, pero sí descargar un tweet suelto. El pipeline ya separa las dos fases: basta con devolver `media_url=None` y un `permalink` que yt-dlp resuelva, y el descargador se encarga —cookies de la fuente incluidas—.
+- **No fijes identificadores que la plataforma rota.** Los `queryId` de la GraphQL cambian sin avisar. Se leen del bundle JS de la propia web en cada arranque, con una salida de emergencia en el YAML por si el bundle cambia de forma. Hardcodearlos habría sido firmar que la fuente caduque en una fecha desconocida.
+- **Filtra las cookies por dominio.** Un fichero de `--cookies-from-browser` trae el perfil entero del navegador. En el caso real venía con la sesión del correo de la cuenta. De un adapter solo debe salir lo que esa plataforma necesita.
+- **Distingue «la sesión murió» de «esto falló».** Es el único error que el programa puede arreglar solo, y merece su propio tipo (`SesionInvalidaError`). Con eso, renovar y reintentar es un `except`, y el aviso a Telegram sale gratis.
+- **Un User-Agent de navegador es una decisión, no un detalle.** Esa API responde 403 al User-Agent honesto del proyecto. Si tu fuente necesita disfrazarse, escríbelo en su docstring y en [LEGAL.md](LEGAL.md): que no lo descubra alguien leyendo el código dos años después.
+
 ## Normalizar bien
 
 `RawCandidate` es donde la variedad de cada API se convierte en algo comparable.
