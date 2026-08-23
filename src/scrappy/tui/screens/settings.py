@@ -306,7 +306,35 @@ class SettingsScreen(Screen[None]):
         assert self._yaml is not None
         valor = self._yaml.get_value(list(campo.path))
         self._inicial[campo.widget_id] = _como_texto(valor)
-        return self._envolver(campo.label, campo.help, self._widget(campo, valor))
+        return self._envolver(campo.label, self._ayuda_de(campo, valor), self._widget(campo, valor))
+
+    def _ayuda_de(self, campo: YamlField, valor: Any) -> str:
+        """La ayuda del campo, con el ritmo real cuando se puede calcular.
+
+        Antes esta ayuda decia «un perfil cada cuatro horas», y las cuatro horas
+        son `SCHEDULE_INTERVAL_MINUTES`, que se configura en **otra pestana**.
+        Bastaba con cambiarlo para que el texto pasara a mentir sobre lo unico
+        que importa. Ahora el numero se calcula de lo que hay puesto.
+        """
+        if campo.path != ("sources", "x", "objetivos_por_ronda"):
+            return campo.help
+
+        from scrappy.sources.x import TOPE_POR_VENTANA, ritmo
+
+        try:
+            por_ronda = int(str(valor))
+            intervalo = int(float(self._valor_efectivo("SCRAPPY_SCHEDULE_INTERVAL_MINUTES")))
+        except (TypeError, ValueError):
+            return campo.help
+
+        al_dia, por_ventana = ritmo(por_ronda, intervalo)
+        holgura = f"{por_ventana}/{TOPE_POR_VENTANA} de lo que X permite por ventana"
+        if por_ventana * 5 > TOPE_POR_VENTANA:
+            holgura = f"⚠ {holgura}: te estas acercando al tope"
+        return (
+            f"{campo.help}\n"
+            f"Con tu intervalo actual ({intervalo} min): {al_dia} perfiles al dia, {holgura}."
+        )
 
     @staticmethod
     def _envolver(etiqueta: str, ayuda: str, widget: Any) -> Vertical:

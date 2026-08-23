@@ -384,15 +384,16 @@ SOURCE_EXTRA_FIELDS: dict[str, tuple[tuple[str, str, str, FieldKind], ...]] = {
         (
             "objetivos_por_ronda",
             "Perfiles por ronda",
-            "Con el backend `scrape`, esto ES la proteccion. Un perfil cada "
-            "cuatro horas se parece a alguien mirando X; cuatro seguidos, no. "
-            "Se rotan, asi que la lista entera se cubre igual.",
+            "Cuantos consultar en cada ronda. Se rotan, asi que la lista entera "
+            "se cubre igual, solo que repartida. X permite 500 peticiones cada "
+            "15 minutos y cada perfil gasta una.",
             FieldKind.NUMBER,
         ),
         (
             "delay_seconds",
             "Espera entre perfiles (s)",
-            "Solo aplica cuando toca mas de uno. Bajarlo es lo que te marca.",
+            "Solo aplica cuando toca mas de uno. Espaciarlos es lo que hace que "
+            "una ronda no sea una rafaga.",
             FieldKind.NUMBER,
         ),
     ),

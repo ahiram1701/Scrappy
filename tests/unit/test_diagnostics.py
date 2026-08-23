@@ -284,3 +284,72 @@ def test_todo_en_orden(settings: Settings, tmp_path: Path) -> None:
     )
 
     assert check.status is CheckStatus.OK
+
+
+# ---------------------------------------------------------------------------
+# El ritmo
+#
+# `objetivos_por_ronda` y el intervalo del scheduler se multiplican, y se
+# configuran en pantallas distintas. Esta comprobacion es el unico sitio donde
+# se ven juntos.
+# ---------------------------------------------------------------------------
+def test_el_ritmo_se_calcula_de_las_dos_cosas() -> None:
+    from scrappy.sources.x import ritmo
+
+    # Una ronda cada 4 h: la ventana de 15 min mas cargada solo ve una ronda.
+    assert ritmo(3, 240) == (18, 3)
+    # Cada 5 minutos caben tres rondas en la ventana.
+    assert ritmo(10, 5) == (2880, 30)
+    # Valores absurdos no revientan: se tratan como 1 y 1 minuto, que es el
+    # peor caso, no como una division por cero.
+    assert ritmo(0, 0) == (1440, 15)
+
+
+def _catalogo_con_x(tmp_path: Path, cuentas: int, por_ronda: int) -> Path:
+    ruta = tmp_path / "sources.yaml"
+    lista = "\n".join(f"      - cuenta{i}" for i in range(cuentas))
+    ruta.write_text(
+        "ranking:\n  weights:\n    engagement: 0.5\n    velocity: 0.5\n"
+        "sources:\n  x:\n"
+        f"    objetivos_por_ronda: {por_ronda}\n"
+        f"    accounts:\n{lista}\n",
+        encoding="utf-8",
+    )
+    return ruta
+
+
+def test_un_ritmo_normal_no_molesta(settings: Settings, tmp_path: Path) -> None:
+    from scrappy.diagnostics import check_x_ritmo
+
+    catalogo = _catalogo_con_x(tmp_path, cuentas=5, por_ronda=3)
+    check = check_x_ritmo(
+        _con_x(settings, tmp_path, sources_config_path=catalogo, schedule_interval_minutes=240)
+    )
+
+    assert check.status is CheckStatus.OK
+    assert "500" in check.detail
+
+
+def test_un_ritmo_agresivo_se_avisa(settings: Settings, tmp_path: Path) -> None:
+    """Subir uno de los dos numeros sin mirar el otro es el fallo facil."""
+    from scrappy.diagnostics import check_x_ritmo
+
+    catalogo = _catalogo_con_x(tmp_path, cuentas=200, por_ronda=200)
+    check = check_x_ritmo(
+        _con_x(settings, tmp_path, sources_config_path=catalogo, schedule_interval_minutes=5)
+    )
+
+    assert check.status is CheckStatus.ERROR
+    assert "429" in check.fix
+
+
+def test_no_se_cuentan_mas_perfiles_de_los_que_hay(settings: Settings, tmp_path: Path) -> None:
+    """Pedir 10 por ronda con 2 cuentas son 2 peticiones, no 10."""
+    from scrappy.diagnostics import check_x_ritmo
+
+    catalogo = _catalogo_con_x(tmp_path, cuentas=2, por_ronda=10)
+    check = check_x_ritmo(
+        _con_x(settings, tmp_path, sources_config_path=catalogo, schedule_interval_minutes=240)
+    )
+
+    assert check.detail.startswith("12 perfiles al dia")

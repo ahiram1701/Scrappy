@@ -178,7 +178,7 @@ Por orden de probabilidad:
 
 2. **La cuenta no publica vídeos.** De la pestaña de medios solo salen tweets con vídeo; una cuenta que publique solo fotos gasta su ronda y no trae nada. Pasó con `@Memes`: 0 vídeos de 20 medios. Al añadir cuentas desde Telegram, Scrappy te lo dice.
 
-3. **Solo se consulta una cuenta por ronda.** Es deliberado (`objetivos_por_ronda` en `sources.yaml`): las cuentas se rotan y la lista entera se cubre en varias rondas. Si tienes dos cuentas y una no da vídeos, una ronda de cada dos vendrá vacía.
+3. **No se consultan todas las cuentas en cada ronda.** Es deliberado (`objetivos_por_ronda` en `sources.yaml`): se rotan y la lista entera se cubre en varias rondas. Si tienes pocas cuentas y alguna no da vídeos, habrá rondas vacías; la solución es añadir cuentas, no bajar el intervalo. Con 5 cuentas y 3 por ronda se cubren todas cada dos rondas.
 
 4. **Cambiaron los `queryId` de X.** Se leen solos del bundle JS de su web, así que esto debería arreglarse sin tocar nada. Si el bundle cambia de forma, el log dirá «el bundle de x.com no trae los queryId esperados» y se pueden fijar a mano en `sources.yaml` con `query_id_user` y `query_id_media`.
 

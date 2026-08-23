@@ -204,3 +204,39 @@ def test_el_yaml_de_ejemplo_sigue_siendo_valido() -> None:
     if not ejemplo.exists():  # pragma: no cover
         pytest.skip("no se encuentra config/sources.example.yaml")
     assert load_sources_config(ejemplo) is not None
+
+
+# ---------------------------------------------------------------------------
+# La ayuda que no puede mentir
+# ---------------------------------------------------------------------------
+async def test_la_ayuda_del_ritmo_de_x_usa_el_intervalo_real(
+    entorno: tuple[Settings, Path],
+) -> None:
+    """Antes decia «cada cuatro horas» dando por hecho el intervalo.
+
+    Y el intervalo se configura en OTRA pestana, asi que bastaba con cambiarlo
+    para que el texto pasara a mentir sobre lo unico que importa. Ahora el
+    numero sale de lo que hay puesto.
+    """
+    from textual.widgets import Static
+
+    settings, env_path = entorno
+    # 60 min en vez de los 240 por defecto: si el texto estuviera escrito a
+    # mano, aqui seguiria diciendo cuatro horas.
+    settings = settings.model_copy(update={"schedule_interval_minutes": 60})
+
+    async with ScrappyTUI(settings, env_path=env_path, show_wizard=False).run_test() as pilot:
+        await pilot.press("s")
+        await pilot.pause()
+
+        # El widget vive en un Horizontal, y la ayuda es hermana de ese
+        # Horizontal dentro del bloque del campo.
+        campo = pilot.app.screen.query_one("#yaml-sources__x__objetivos_por_ronda")
+        bloque = campo.parent.parent
+        assert bloque is not None
+        texto = " ".join(str(w.render()) for w in bloque.query(Static))
+
+    assert "60 min" in texto
+    assert "cuatro horas" not in texto
+    # Y el tope real de X, que es el dato con el que se juzga el numero.
+    assert "500" in texto

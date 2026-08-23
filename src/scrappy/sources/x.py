@@ -86,6 +86,33 @@ _FEATURES_DE_USUARIO = json.dumps(
 _UA_NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
 
 
+#: Lo que X declara para `UserMedia` en su cabecera `x-rate-limit-limit`,
+#: comprobado el 23/08/2026: 500 peticiones por ventana de 15 minutos. No es una
+#: estimacion ni una cifra de un blog; la manda la propia respuesta.
+TOPE_POR_VENTANA = 500
+
+#: Minutos de la ventana de rate limit de X.
+VENTANA_MINUTOS = 15
+
+
+def ritmo(por_ronda: int, intervalo_minutos: int) -> tuple[int, int]:
+    """Perfiles al dia y peticiones en la ventana de 15 minutos mas cargada.
+
+    Vive aqui y no en cada interfaz porque lo usan la ayuda de la TUI y el
+    diagnostico, y dos copias de esta cuenta acabarian diciendo cosas distintas
+    -que es justo lo que hacia el texto de la TUI cuando daba por hecho que las
+    rondas eran cada cuatro horas-.
+    """
+    por_ronda = max(por_ronda, 1)
+    intervalo_minutos = max(intervalo_minutos, 1)
+
+    al_dia = round(1440 / intervalo_minutos * por_ronda)
+    # Si caben varias rondas en una ventana, se suman; si no, la ventana mas
+    # cargada es la de una sola ronda.
+    rondas_por_ventana = max(VENTANA_MINUTOS / intervalo_minutos, 1)
+    return al_dia, round(por_ronda * rondas_por_ventana)
+
+
 class SesionInvalidaError(SourceError):
     """La sesion de X ya no vale: cookies caducadas o revocadas.
 

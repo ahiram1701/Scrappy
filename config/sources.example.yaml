@@ -138,21 +138,28 @@ sources:
   # backend `scrape`-> yt-dlp + cookies, gratis pero contra ToS y fragil.
   # Se elige con SCRAPPY_X_BACKEND en el .env.
   #
-  # LOS NUMEROS DE ABAJO SON LA PROTECCION, no una preferencia de gusto. Con el
-  # backend `scrape` no hay un limite publicado que respetar: lo que distingue a
-  # un lector de un scraper es el ritmo. Un perfil por ronda, cada cuatro horas,
-  # se parece a alguien mirando X; cuatro perfiles seguidos, no. Subir
-  # `objetivos_por_ronda` o bajar `delay_seconds` es exactamente lo que hace que
-  # te marquen la IP y la cuenta.
+  # SOBRE EL RITMO. X declara su limite en cada respuesta -cabecera
+  # `x-rate-limit-limit`- y para este endpoint son **500 peticiones cada 15
+  # minutos**. Cada perfil consultado gasta una. Comprobado el 23/08/2026.
   #
-  # La lista entera se sigue cubriendo: los perfiles se ROTAN entre rondas, asi
-  # que con 3 cuentas y 1 por ronda se recorren las tres cada tres rondas.
+  # Con 3 por ronda y el intervalo por defecto de 4 h eso son 18 perfiles al
+  # dia: 3 peticiones en la ventana mas cargada, de 500 que permite. Sobra
+  # margen, y por eso este numero no es tan pequeno como fue al principio.
+  #
+  # Lo que si conviene saber: `objetivos_por_ronda` y el intervalo del
+  # scheduler se multiplican, y se configuran en sitios distintos. Bajar el
+  # intervalo a 5 minutos con 10 por ronda son 2.880 perfiles al dia. La TUI
+  # ensena el numero que sale con TU configuracion, y `scrappy doctor` avisa si
+  # la combinacion se acerca al tope.
+  #
+  # La lista entera se cubre igual: los perfiles se ROTAN entre rondas, asi que
+  # con 6 cuentas y 3 por ronda se recorren las seis cada dos rondas.
   # ---------------------------------------------------------------------------
   x:
     weight: 0.7
-    budget: 20            # menos candidatos por ronda = menos paginacion
-    objetivos_por_ronda: 1 # cuantos perfiles consultar en cada ronda
-    delay_seconds: 30     # espera entre perfiles, cuando toca mas de uno
+    budget: 20            # candidatos a pedir por ronda, repartidos entre perfiles
+    objetivos_por_ronda: 3 # cuantos perfiles consultar en cada ronda
+    delay_seconds: 30     # espera entre perfiles, para que no sea una rafaga
     # Consultas para el backend `api` (sintaxis de X API v2).
     queries:
       - "(funny OR meme) has:videos -is:retweet lang:es min_faves:2000"

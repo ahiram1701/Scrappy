@@ -5,6 +5,17 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Arreglado — la TUI daba por hecho un intervalo que se configura en otra pestaña
+
+La ayuda de «Perfiles por ronda» decía que un perfil cada cuatro horas se parece a alguien mirando X. Las cuatro horas son `SCHEDULE_INTERVAL_MINUTES`, que vive en la pestaña Programación: bastaba con cambiarlo para que el texto pasara a mentir sobre lo único que importaba de ese campo.
+
+Ahora el número **se calcula de lo que hay puesto**: «con tu intervalo actual (60 min): 72 perfiles al día, 3/500 de lo que X permite por ventana». La aritmética vive en un solo sitio (`sources.x.ritmo`), así que la TUI y el diagnóstico no pueden decir cosas distintas.
+
+Y de paso, el dato que faltaba para juzgar el número: **X declara su límite en cada respuesta** —cabecera `x-rate-limit-limit`— y para este endpoint son 500 peticiones cada 15 minutos. La configuración anterior gastaba 6 al día. Era conservadora sin motivo, así que el defecto sube de 1 a 3 perfiles por ronda: 18 al día, 3 de esas 500.
+
+- **`scrappy doctor` comprueba el ritmo.** `objetivos_por_ronda` y el intervalo se multiplican y se configuran en pantallas distintas; esta es la única donde se ven juntos. Avisa por encima del 20% del tope y falla si lo pasa.
+- Nunca cuenta más perfiles de los que hay: pedir 10 por ronda con 2 cuentas son 2 peticiones, no 10.
+
 ### Añadido — la sesión de X se renueva sola
 
 X es la única credencial del proyecto que caduca sin avisar, y hasta ahora arreglarla pedía acordarse de demasiadas cosas: de que existe un perfil de Firefox llamado `burner`, de que su carpeta se llama `pTbhVY6z.Profile 1` y no `burner`, de la invocación exacta de yt-dlp, y de filtrar el fichero para que no viajara la sesión del correo. Dentro de tres meses eso no se acuerda nadie.

@@ -340,6 +340,56 @@ def check_x_cookies(settings: Settings) -> Check:
     return Check(nombre, CheckStatus.OK, "sesion completa, se renueva sola al caducar")
 
 
+def check_x_ritmo(settings: Settings) -> Check:
+    """A que ritmo se le pide a X, comparado con lo que X permite.
+
+    Existe porque el numero por defecto se subio. Un `objetivos_por_ronda` alto
+    combinado con un intervalo corto multiplica las peticiones sin que se note
+    en ninguna de las dos pantallas donde se configuran, que estan separadas.
+    Aqui se ven juntas, que es la unica forma de juzgarlo.
+    """
+    from scrappy.config.settings import XBackend
+
+    nombre = "Ritmo de X"
+    if not settings.x_enabled or settings.x_backend is not XBackend.SCRAPE:
+        return Check(nombre, CheckStatus.SKIPPED, "no aplica")
+
+    from scrappy.sources.x import TOPE_POR_VENTANA, VENTANA_MINUTOS, ritmo
+
+    try:
+        catalogo = load_sources_config(settings.sources_config_path)
+        config = catalogo.for_source("x")
+    except ConfigError:
+        # Ya lo dice `check_sources_config`; repetirlo aqui seria ruido.
+        return Check(nombre, CheckStatus.SKIPPED, "no se pudo leer el catalogo")
+
+    cuentas = len(config.get_list("accounts")) or 1
+    por_ronda = min(config.get_int("objetivos_por_ronda", cuentas), cuentas)
+    al_dia, por_ventana = ritmo(por_ronda, settings.schedule_interval_minutes)
+    detalle = (
+        f"{al_dia} perfiles al dia, {por_ventana} peticiones por ventana "
+        f"de {VENTANA_MINUTOS} min (tope {TOPE_POR_VENTANA})"
+    )
+
+    if por_ventana > TOPE_POR_VENTANA:
+        return Check(
+            nombre,
+            CheckStatus.ERROR,
+            detalle,
+            "baja `objetivos_por_ronda` en sources.yaml o sube el intervalo del "
+            "scheduler: asi X va a responder 429",
+        )
+    if por_ventana * 5 > TOPE_POR_VENTANA:
+        return Check(
+            nombre,
+            CheckStatus.WARNING,
+            detalle,
+            "vas por encima del 20% de lo que X permite. Funciona, pero es mas "
+            "trafico del que justifica una fuente de memes",
+        )
+    return Check(nombre, CheckStatus.OK, detalle)
+
+
 async def check_x_sesion(settings: Settings) -> Check:
     """Si la sesion de X sirve de verdad. Una peticion, no mas.
 
@@ -485,6 +535,7 @@ async def run_diagnostics(settings: Settings, *, use_network: bool = True) -> Di
         check_reddit_user_agent(settings),
         check_sources_config(settings),
         check_x_cookies(settings),
+        check_x_ritmo(settings),
     ]
 
     # Solo se llama a Telegram si el formato ya era correcto: si el token tiene
