@@ -5,6 +5,20 @@ Versionado según [SemVer](https://semver.org/lang/es/).
 
 ## [No publicado]
 
+### Arreglado — el backend `scrape` de X no funcionaba, y no podía
+
+Estaba escrito sobre una premisa falsa: que yt-dlp sabe enumerar perfiles de X. No lo sabe. Sus extractores de Twitter cubren tweets sueltos, cards, spaces y broadcasts — ninguno hace timelines. Como `XScrapeSource` construía URLs de perfil, la fuente devolvía `Unsupported URL` en cada ronda, con cookies o sin ellas. No es que se rompiera con el tiempo: **no funcionó nunca**, y nadie lo vio porque venía desactivada y fallaba en un `warning`.
+
+Como el pipeline separa descubrir de descargar, solo hacía falta cambiar la primera mitad. Ahora los tweets se piden a la GraphQL interna de la web de X con las cookies de la cuenta, y la descarga la sigue haciendo yt-dlp contra `/status/<id>`, que sí resuelve.
+
+- **Los `queryId` se descubren solos** del bundle JS de la propia web. X los rota sin avisar, y fijarlos en el código habría sido firmar que esto caduque en una fecha desconocida. Se pueden poner a mano en `sources.yaml` si el bundle cambia de forma.
+- **El id de cada cuenta se cachea**: a partir de la segunda ronda cuesta una petición en vez de dos.
+- **De las cookies solo se leen las de X.** El fichero que produce `--cookies-from-browser` trae el perfil entero del navegador, incluida la sesión del correo con el que se registró la cuenta. Eso no tiene por qué viajar a X.
+- **Las cookies van en la cabecera, no en el cliente HTTP**, que lo comparten todas las fuentes.
+- La sesión caducada se explica en vez de dar un `HTTP 403` a secas, y `/sources` avisa si al fichero le falta `auth_token` o `ct0`.
+
+Esto es más intrusivo que lo que había, no menos, y conviene no maquillarlo: se pasa de leer páginas públicas a llamar autenticado a una API privada. Además esa API responde 403 al User-Agent honesto de Scrappy, así que esta fuente —la única del proyecto— manda uno de navegador. Está aislada en su módulo y documentado en [LEGAL.md](docs/LEGAL.md) y [ADR-0003](docs/adr/0003-x-doble-backend.md).
+
 ### Añadido — X por scraping, y el freno que le faltaba
 
 Activar X con el backend `scrape` es una decisión del usuario y sigue siéndolo. Lo que no era una decisión de nadie es que, al hacerlo, Scrappy pidiera los perfiles **uno detrás de otro y sin pausa**. Era la única familia de fuentes sin espaciado: Reddit, Lemmy, Bluesky, Imgur y Giphy lo tenían todas.

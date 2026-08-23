@@ -158,9 +158,22 @@ sources:
       - "(funny OR meme) has:videos -is:retweet lang:es min_faves:2000"
       - "(funny OR meme) has:videos -is:retweet lang:en min_faves:5000"
     # Cuentas a vigilar con el backend `scrape` (sin la @).
+    #
+    # De aqui solo salen tweets CON VIDEO: la pestana de medios trae tambien
+    # fotos y se descartan. Una cuenta que solo publique imagenes gasta su
+    # ronda y no trae nada, asi que conviene comprobarlas antes de anadirlas.
+    # Medido el 22/08/2026: @RealestMemes_ daba 10 videos de 20 medios;
+    # @Memes, 0 de 20 (solo fotos).
     accounts:
+      - RealestMemes_
       - Memes
-      - dailyviralvid
+
+    # Salida de emergencia. Los `queryId` de la GraphQL de X se leen solos del
+    # bundle JS de su web, que es lo que evita que esto caduque. Si algun dia
+    # ese bundle cambia de forma, se fijan aqui a mano y la fuente sigue
+    # funcionando sin tocar codigo. Vacios = descubrimiento automatico.
+    query_id_user: ""
+    query_id_media: ""
 
   # ---------------------------------------------------------------------------
   # Imgur -- clave gratuita de registro instantaneo. Mucho volumen de memes.
